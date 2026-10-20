@@ -305,6 +305,102 @@ platform = new FakePlatform { Machine = new HostMachineInfo(true, "LanmanNT", "S
 Reject(() => VncHostConfiguration.Configure(platform, instance, helper, 5900), "member servers");
 Check(platform.Operations.SequenceEqual(["Inspect"]), "VNC preparation rejects a domain controller before firewall or account changes.");
 
+string administratorName = HostConfiguration.AccountName(instance, "SSH", true);
+string administratorMarker = HostConfiguration.OwnershipMarker(instance, "SSH", true);
+platform = new FakePlatform();
+configured = HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true);
+Check(configured.AdministratorAccess && configured.Username == administratorName && platform.Account is { IsAdministrator: true, IsEnabled: true } &&
+    configured.StatusMessage.Contains("dedicated administrator", StringComparison.Ordinal),
+    "Explicit administrator SSH setup returns a separately enrolled administrator account and describes its privileges.");
+Check(administratorName.StartsWith("mdadm_", StringComparison.Ordinal) && administratorName.Length <= 20 &&
+    administratorName != HostConfiguration.AccountName(instance, "SSH") && administratorName != HostConfiguration.AccountName(instance) &&
+    administratorMarker != HostConfiguration.OwnershipMarker(instance, "SSH"),
+    "Administrator SSH has a distinct valid account name and ownership marker, preserving standard SSH and RDP accounts.");
+Check(platform.Operations.SequenceEqual(["Inspect", "Find", "PrepareSSH", "Create", "AdminSSHGroups", "PrepareSSH", "AdminEnable"]) &&
+    platform.AdminMembershipWasDisabled,
+    "A new administrator account stays disabled while acquiring groups and checking its final SSH policy, then enables last.");
+Check(configured.Port == 2223 && configured.SshHostKeyFingerprints.SequenceEqual(FakePlatform.SshKeys),
+    "Administrator setup publishes the port and host identity from the final role-aware SSH policy evaluation.");
+
+platform = new FakePlatform { Account = new HostAccountInfo(administratorMarker, true) };
+HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true);
+Check(platform.Operations.SequenceEqual(["Inspect", "Find", "PrepareSSH", "AdminSSHGroups", "PrepareSSH", "AdminPassword"]) &&
+    platform.LastPasswordAccount == administratorName,
+    "An existing owned administrator SSH account rotates only its own password after all policy and group checks succeed.");
+platform = new FakePlatform { Account = new HostAccountInfo(administratorMarker, true, false) };
+HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true);
+Check(platform.Operations.TakeLast(2).SequenceEqual(["AdminPassword", "AdminEnable"]) && platform.Account!.IsEnabled,
+    "A disabled owned administrator account receives the new password before it can be enabled.");
+platform = new FakePlatform { Account = new HostAccountInfo(administratorMarker, true, false), Failure = "AdminPassword" };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true), "Test failure");
+Check(!platform.Account!.IsEnabled && !platform.Operations.Contains("AdminEnable") && platform.Password == "",
+    "Failed administrator password rotation cannot re-enable a disabled account with its old credential.");
+
+foreach (HostAccountInfo collision in new[]
+{
+    new HostAccountInfo("Unrelated administrator", true),
+    new HostAccountInfo(HostConfiguration.OwnershipMarker(instance, "SSH"), true),
+    new HostAccountInfo(administratorMarker, false),
+    new HostAccountInfo(administratorMarker, false, false)
+})
+{
+    platform = new FakePlatform { Account = collision };
+    Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true), "unrelated account");
+    Check(platform.Operations.SequenceEqual(["Inspect", "Find"]),
+        "Foreign account ownership and administrator role mismatches are rejected before any host or account changes.");
+}
+foreach (string failure in new[] { "AdminSSHGroups", "AdminEnable", "PrepareSSH2" })
+{
+    platform = new FakePlatform { Failure = failure };
+    Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true), "Test failure");
+    Check(platform.Operations.Last() == "Delete" && platform.Account is null && !platform.Operations.Contains("AdminPassword"),
+        "A failed new administrator group, enable or final policy check removes its incomplete account without exposing a credential.");
+}
+platform = new FakePlatform { Account = new HostAccountInfo(administratorMarker, true), Failure = "PrepareSSH2" };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true), "Test failure");
+Check(platform.Account!.IsEnabled && !platform.Operations.Contains("AdminPassword") && !platform.Operations.Contains("Delete"),
+    "A final administrator SSH policy rejection preserves an existing account and password.");
+platform = new FakePlatform { Account = new HostAccountInfo(administratorMarker, true), Failure = "AdminSSHGroups" };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true), "Test failure");
+Check(platform.Account!.IsEnabled && platform.Password == "" && !platform.Operations.Contains("AdminPassword") && !platform.Operations.Contains("Delete"),
+    "A failed existing administrator membership check leaves its password and enabled state untouched.");
+platform = new FakePlatform { Failure = "AdminEnable", FailDelete = true };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH", administratorAccess: true), "could not be removed");
+Check(platform.Account is { IsAdministrator: true, IsEnabled: false },
+    "If rollback fails, the newly created administrator account remains disabled and setup reports its cleanup requirement.");
+
+foreach (string protocol in new[] { "RDP", "VNC" })
+{
+    platform = new FakePlatform();
+    try { HostConfiguration.Configure(platform, instance, helper, protocol, administratorAccess: true); throw new Exception("Expected administrator mode rejection."); }
+    catch (HostSetupException) { }
+    Check(platform.Operations.Count == 0, "Dedicated administrator enrollment is limited to SSH and cannot change RDP or VNC accounts.");
+}
+foreach (var invalid in new[]
+{
+    (Name: HostConfiguration.AccountName(instance, "SSH"), Marker: administratorMarker, Account: new HostAccountInfo(administratorMarker, true)),
+    (Name: administratorName, Marker: HostConfiguration.OwnershipMarker(instance, "SSH"), Account: new HostAccountInfo(administratorMarker, true)),
+    (Name: administratorName, Marker: administratorMarker, Account: new HostAccountInfo("Foreign ownership", true)),
+    (Name: administratorName, Marker: administratorMarker, Account: new HostAccountInfo(administratorMarker, false))
+})
+{
+    try { ManagedAdministratorAccountGuard.Validate(invalid.Name, invalid.Marker, invalid.Account); throw new Exception("Expected privileged target rejection."); }
+    catch (HostSetupException) { }
+    Check(true, "Privileged native operations require the exact administrator account name, enrollment marker and actual group membership.");
+}
+platform = new FakePlatform();
+configured = HostConfiguration.Configure(platform, instance, helper, "SSH");
+Check(!configured.AdministratorAccess && platform.Account is { IsAdministrator: false } && !platform.Operations.Any(value => value.StartsWith("Admin", StringComparison.Ordinal)),
+    "Standard dedicated SSH remains the default and never invokes privileged account operations.");
+platform = new FakePlatform { Account = new HostAccountInfo(HostConfiguration.OwnershipMarker(instance, "SSH"), true) };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH"), "unrelated or administrative");
+Check(platform.Operations.SequenceEqual(["Inspect", "Find"]),
+    "Standard SSH still refuses an owned standard account that was externally added to Administrators.");
+platform = new FakePlatform { Account = new HostAccountInfo("Current administrator", true) };
+configured = HostConfiguration.ConfigureCurrentAccount(platform, instance, helper, currentCredentials, "SSH");
+Check(!configured.AdministratorAccess && platform.Account!.IsAdministrator && platform.Operations.SequenceEqual(["Inspect", "Validate", "PrepareSSH", "GrantSSHSid"]),
+    "Current-account SSH keeps the account's existing privileges and never enrolls or promotes a dedicated administrator.");
+
 passed += await HostSetupProtocolChecks.RunAsync();
 Console.WriteLine($"All {passed} host-configuration and protected-transport checks passed. Only a fake platform was used; no machine settings changed.");
 
@@ -321,6 +417,9 @@ sealed class FakePlatform : IHostPlatform
     public static readonly string[] SshKeys = ["SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"];
     public IReadOnlyList<string> SshFingerprints { get; set; } = SshKeys;
     public string? LastPasswordAccount { get; private set; }
+    public bool AdminMembershipWasDisabled { get; private set; }
+    public bool FailDelete { get; set; }
+    private int _sshPreparations;
     private void Perform(string operation)
     {
         Operations.Add(operation);
@@ -333,15 +432,41 @@ sealed class FakePlatform : IHostPlatform
     public void EnsureRemoteDesktopMembership(string username) => Perform("Groups");
     public void EnableManagedAccount(string username) { Perform("Enable"); Account = Account! with { IsEnabled = true }; }
     public void SetAccountPassword(string username, string password) { Perform("Password"); Password = password; LastPasswordAccount = username; }
-    public void DeleteAccount(string username) => Perform("Delete");
+    public void DeleteAccount(string username) { Perform("Delete"); if (FailDelete) throw new HostSetupException("Test failure during rollback"); Account = null; }
     public void ValidateAccountCredentials(HostAccountCredentials credentials)
     {
         Perform("Validate");
         if (credentials.Sid != CurrentSid) throw new HostSetupException("These credentials belong to a different Windows account.");
     }
     public void GrantRemoteDesktopAccess(string sid) { Perform("GrantSid"); GrantedSid = sid; }
-    public HostSshConfiguration PrepareSecureShell(string username, string domain, string helperExecutablePath, Guid instanceId) { Perform("PrepareSSH"); return new HostSshConfiguration(2222, SshFingerprints); }
+    public HostSshConfiguration PrepareSecureShell(string username, string domain, string helperExecutablePath, Guid instanceId)
+    {
+        Perform("PrepareSSH");
+        _sshPreparations++;
+        if (Failure == "PrepareSSH2" && _sshPreparations == 2) throw new HostSetupException("Test failure during final administrator policy check");
+        return new HostSshConfiguration(_sshPreparations == 1 ? 2222 : 2223, SshFingerprints);
+    }
     public void EnsureSecureShellMembership(string username) => Perform("SSHGroups");
     public void GrantSecureShellAccess(string sid) { Perform("GrantSSHSid"); GrantedSid = sid; }
     public void PrepareVnc(int port, string helperExecutablePath, Guid instanceId) => Perform("PrepareVNC");
+    public void EnsureAdministratorSecureShellMembership(string username, string ownershipMarker)
+    {
+        ManagedAdministratorAccountGuard.Validate(username, ownershipMarker, Account, allowNewDisabled: true);
+        AdminMembershipWasDisabled = !Account!.IsEnabled;
+        Perform("AdminSSHGroups");
+        Account = Account with { IsAdministrator = true };
+    }
+    public void EnableAdministratorManagedAccount(string username, string ownershipMarker)
+    {
+        ManagedAdministratorAccountGuard.Validate(username, ownershipMarker, Account);
+        Perform("AdminEnable");
+        Account = Account! with { IsEnabled = true };
+    }
+    public void SetAdministratorManagedAccountPassword(string username, string password, string ownershipMarker)
+    {
+        ManagedAdministratorAccountGuard.Validate(username, ownershipMarker, Account);
+        Perform("AdminPassword");
+        Password = password;
+        LastPasswordAccount = username;
+    }
 }

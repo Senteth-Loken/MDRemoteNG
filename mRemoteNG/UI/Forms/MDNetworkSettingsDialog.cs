@@ -19,6 +19,7 @@ namespace mRemoteNG.UI.Forms
     {
         private readonly ProfileStore _store;
         private readonly Func<string, Task<HostConfigurationResult>> _configureProtocolHost;
+        private readonly Func<string, bool, Task<HostConfigurationResult>> _configureProtocolHostWithAccess;
         private readonly Func<string, string, Task<HostConfigurationResult>> _configureProtocolCurrentAccount;
         private readonly Func<IWin32Window, string> _requestCurrentAccountPassword;
         private readonly Dictionary<string, SharedConnection> _connectionDrafts = new(StringComparer.Ordinal);
@@ -37,6 +38,8 @@ namespace mRemoteNG.UI.Forms
         private readonly Label _sharedSummary = new() { AutoSize = true, MaximumSize = new Size(350, 0), Margin = new Padding(3, 6, 3, 6) };
         private readonly Button _stopSharing = new() { Text = "Stop sharing all connections", AutoSize = true };
         private readonly Button _configureHostButton = new() { Text = "Auto-configure this computer", AutoSize = true };
+        private readonly CheckBox _sshAdministrator = new() { Text = "Create a dedicated administrator account for SSH", AutoSize = true };
+        private readonly Label _sshAdministratorWarning = new() { Text = "Anyone on this local network with the matching PIN can receive administrator credentials. Switching back or stopping sharing does not remove the administrator account or revoke credentials already shared.", AutoSize = true, MaximumSize = new Size(575, 0), ForeColor = Color.Firebrick, Margin = new Padding(3, 3, 3, 8) };
         private readonly Button _configureCurrentAccountButton = new() { Text = "Configure for my Windows account", AutoSize = true };
         private readonly Label _hostDescription = new() { AutoSize = true, MaximumSize = new Size(575, 0), Margin = new Padding(3, 6, 3, 8) };
         private readonly Label _currentAccountDescription = new() { AutoSize = true, MaximumSize = new Size(575, 0), Margin = new Padding(3, 6, 3, 8) };
@@ -60,11 +63,17 @@ namespace mRemoteNG.UI.Forms
             Func<string, Task<HostConfigurationResult>> configureCurrentAccount = null,
             Func<IWin32Window, string> requestCurrentAccountPassword = null,
             Func<string, Task<HostConfigurationResult>> configureProtocolHost = null,
-            Func<string, string, Task<HostConfigurationResult>> configureProtocolCurrentAccount = null)
+            Func<string, string, Task<HostConfigurationResult>> configureProtocolCurrentAccount = null,
+            Func<string, bool, Task<HostConfigurationResult>> configureProtocolHostWithAccess = null)
         {
             _store = store;
             _configureProtocolHost = configureProtocolHost ?? (configureHost != null
                 ? _ => configureHost() : protocol => HostSetupClient.ConfigureAsync(profile.InstanceId, protocol));
+            _configureProtocolHostWithAccess = configureProtocolHostWithAccess ?? (configureProtocolHost != null || configureHost != null
+                ? (protocol, administratorAccess) => administratorAccess
+                    ? Task.FromException<HostConfigurationResult>(new HostSetupException("This host setup provider does not support administrator SSH accounts."))
+                    : _configureProtocolHost(protocol)
+                : (protocol, administratorAccess) => HostSetupClient.ConfigureAsync(profile.InstanceId, protocol, administratorAccess));
             _configureProtocolCurrentAccount = configureProtocolCurrentAccount ?? (configureCurrentAccount != null
                 ? (_, password) => configureCurrentAccount(password)
                 : (protocol, password) => HostSetupClient.ConfigureCurrentAccountAsync(profile.InstanceId, protocol, password));
@@ -97,6 +106,9 @@ namespace mRemoteNG.UI.Forms
             sharing.Controls.Add(_sharedSummary);
             sharing.Controls.Add(_stopSharing);
             AddWide(layout, sharing);
+            _sshAdministrator.CheckedChanged += (_, _) => UpdateDedicatedHostChoice();
+            AddWide(layout, _sshAdministrator);
+            AddWide(layout, _sshAdministratorWarning);
             _configureHostButton.Click += async (_, _) => await ConfigureHostAsync();
             AddWide(layout, _configureHostButton);
             AddWide(layout, _hostDescription);
@@ -209,21 +221,33 @@ namespace mRemoteNG.UI.Forms
                 _domain.Text = connection?.Domain ?? (protocol == "RDP" ? Environment.UserDomainName : "");
                 _password.Text = connection?.Password ?? "";
                 _share.Checked = _sharedProtocols.Contains(protocol);
-                _configureHostButton.Text = protocol switch
-                {
-                    "SSH" => "Configure SSH terminal access",
-                    "VNC" => "Configure VNC desktop sharing",
-                    _ => "Auto-configure Remote Desktop"
-                };
-                _hostDescription.Text = protocol == "VNC"
-                    ? "Prepares sharing of this computer's existing desktop with a generated VNC password. Matching PIN holders can control the desktop. The connection is saved immediately. Windows may ask for administrator approval."
-                    : "Prepares " + (protocol == "SSH" ? "SSH terminal access" : "Remote Desktop") + ", creates a dedicated local non-administrator account with a generated password, and immediately saves it for matching PIN holders. Windows will ask for administrator approval.";
+                if (protocol != "SSH") _sshAdministrator.Checked = false;
+                UpdateDedicatedHostChoice();
                 _currentAccountDescription.Text = protocol == "VNC"
                     ? "VNC shares the existing desktop using credentials generated by MDRemoteNG. It does not use your Windows account password."
                     : "Alternatively, use your current Windows account and its password. Matching PIN holders receive access with that account's existing permissions. A Windows Hello PIN is not its password.";
             }
             finally { _loadingProtocol = false; }
             UpdateEnabled();
+        }
+
+        private void UpdateDedicatedHostChoice()
+        {
+            string protocol = _protocol.Text;
+            bool administratorAccess = protocol == "SSH" && _sshAdministrator.Checked;
+            _sshAdministrator.Visible = protocol == "SSH";
+            _sshAdministratorWarning.Visible = administratorAccess;
+            _configureHostButton.Text = protocol switch
+            {
+                "SSH" when administratorAccess => "Configure administrator SSH access",
+                "SSH" => "Configure SSH terminal access",
+                "VNC" => "Configure VNC desktop sharing",
+                _ => "Auto-configure Remote Desktop"
+            };
+            _hostDescription.Text = protocol == "VNC"
+                ? "Prepares sharing of this computer's existing desktop with a generated VNC password. Matching PIN holders can control the desktop. The connection is saved immediately. Windows may ask for administrator approval."
+                : "Prepares " + (protocol == "SSH" ? "SSH terminal access" : "Remote Desktop") + ", creates a dedicated local " +
+                  (administratorAccess ? "administrator" : "non-administrator") + " account with a generated password, and immediately saves it for matching PIN holders. Windows will ask for administrator approval.";
         }
 
         private void OnStopSharing(object sender, EventArgs e)
@@ -243,8 +267,10 @@ namespace mRemoteNG.UI.Forms
         private Task ConfigureHostAsync()
         {
             string protocol = _protocol.Text;
-            return ConfigureHostCoreAsync(() => _configureProtocolHost(protocol),
-                "Host configured and shared. The generated connection details are already saved.");
+            bool administratorAccess = protocol == "SSH" && _sshAdministrator.Checked;
+            return ConfigureHostCoreAsync(() => _configureProtocolHostWithAccess(protocol, administratorAccess),
+                administratorAccess ? "Administrator SSH host configured and shared. The generated administrator credentials are already saved." :
+                    "Host configured and shared. The generated connection details are already saved.", administratorAccess);
         }
 
         private async Task ConfigureCurrentAccountHostAsync()
@@ -278,7 +304,7 @@ namespace mRemoteNG.UI.Forms
             finally { password = null; }
         }
 
-        private async Task ConfigureHostCoreAsync(Func<Task<HostConfigurationResult>> configure, string successMessage)
+        private async Task ConfigureHostCoreAsync(Func<Task<HostConfigurationResult>> configure, string successMessage, bool administratorAccess = false)
         {
             if (_configuringHost) return;
             _configuringHost = true;
@@ -291,6 +317,8 @@ namespace mRemoteNG.UI.Forms
             {
                 HostConfigurationResult result = await configure();
                 if (result == null) throw new InvalidDataException("Host setup returned no credentials.");
+                if (result.AdministratorAccess != administratorAccess || (result.AdministratorAccess && result.Protocol != "SSH"))
+                    throw new HostSetupException("Host setup returned an unexpected account access level. Your connection details have not changed.");
                 var connection = new SharedConnection
                 {
                     Protocol = result.Protocol,
@@ -404,6 +432,7 @@ namespace mRemoteNG.UI.Forms
             foreach (Control control in new Control[] { _displayName, _discovery, _autoConnect, _share, _changePin, _configureHostButton, _configureCurrentAccountButton, _save, _cancel })
                 control.Enabled = !_configuringHost;
             _protocol.Enabled = !_configuringHost;
+            _sshAdministrator.Enabled = !_configuringHost && _protocol.Text == "SSH";
             foreach (Control control in new Control[] { _port, _password }) control.Enabled = _share.Checked && !_configuringHost;
             _username.Enabled = _share.Checked && _protocol.Text != "VNC" && !_configuringHost;
             _domain.Enabled = _share.Checked && _protocol.Text == "RDP" && !_configuringHost;

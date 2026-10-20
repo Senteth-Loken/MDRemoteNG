@@ -40,6 +40,7 @@ internal static class Program
             CheckHostConfiguration(Path.Combine(directory, "host-profile.dat"));
             CheckWindowsAccountConfiguration(Path.Combine(directory, "account-profile.dat"));
             CheckMultipleHostProtocols(Path.Combine(directory, "protocol-profile.dat"));
+            CheckSshAdministratorChoice(Path.Combine(directory, "administrator-profile.dat"));
             CheckCancelledStartup();
             Console.WriteLine($"All {_passed} isolated startup and dialog checks passed. No windows were displayed.");
             return 0;
@@ -579,6 +580,185 @@ internal static class Program
             CertificateFingerprint = certificate.GetCertHashString(HashAlgorithmName.SHA256),
             VncCertificatePfx = certificate.Export(X509ContentType.Pfx)
         };
+    }
+
+    private static void CheckSshAdministratorChoice(string path)
+    {
+        var store = new ProfileStore(path);
+        Profile profile = store.Create("UI#1");
+        SharedConnectionSet.Upsert(profile, new SharedConnection
+        {
+            Protocol = "RDP", Port = 3390, Username = "retained-rdp-user", Domain = "TEST-PC", Password = "retained-rdp-password"
+        });
+        store.Save(profile);
+        string requestedProtocol = null;
+        bool requestedAdministrator = true;
+        using (var standard = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (protocol, administrator) =>
+        {
+            requestedProtocol = protocol;
+            requestedAdministrator = administrator;
+            return Task.FromResult(SshResult());
+        }))
+        {
+            Check(!Field<CheckBox>(standard, "_sshAdministrator").Checked && !Field<CheckBox>(standard, "_sshAdministrator").Enabled,
+                "Dedicated administrator SSH is unchecked and unavailable for the default RDP choice.");
+            Field<ComboBox>(standard, "_protocol").SelectedItem = "SSH";
+            Check(!Field<CheckBox>(standard, "_sshAdministrator").Checked && Field<CheckBox>(standard, "_sshAdministrator").Enabled &&
+                Field<Button>(standard, "_configureHostButton").Text == "Configure SSH terminal access",
+                "Selecting SSH retains standard dedicated access unless administrator creation is explicitly chosen.");
+            CompleteUiTask(InvokeHostSetup(standard));
+            Check(requestedProtocol == "SSH" && !requestedAdministrator && store.Load().SharedConnection.Username == "ssh-test-user" &&
+                store.Load().SharedConnections.Single(connection => connection.Protocol == "RDP").Username == "retained-rdp-user",
+                "The default SSH setup sends a false administrator request and preserves independent RDP credentials.");
+        }
+
+        var completion = new TaskCompletionSource<HostConfigurationResult>();
+        using (var administrator = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (protocol, elevatedAccess) =>
+        {
+            requestedProtocol = protocol;
+            requestedAdministrator = elevatedAccess;
+            return completion.Task;
+        }))
+        {
+            Field<CheckBox>(administrator, "_sshAdministrator").Checked = true;
+            Check(Field<Button>(administrator, "_configureHostButton").Text == "Configure administrator SSH access" &&
+                Field<Label>(administrator, "_sshAdministratorWarning").Text.Contains("matching PIN can receive administrator credentials", StringComparison.Ordinal) &&
+                Field<Label>(administrator, "_sshAdministratorWarning").Text.Contains("does not remove the administrator account", StringComparison.Ordinal) &&
+                Field<Label>(administrator, "_hostDescription").Text.Contains("local administrator account", StringComparison.Ordinal),
+                "Explicit administrator selection names the dedicated action and explains who receives administrator credentials.");
+            Task operation = InvokeHostSetup(administrator);
+            Check(requestedProtocol == "SSH" && requestedAdministrator && !Field<CheckBox>(administrator, "_sshAdministrator").Enabled &&
+                !Field<Button>(administrator, "_save").Enabled && !Field<Button>(administrator, "_configureCurrentAccountButton").Enabled,
+                "Administrator setup captures the explicit role and prevents role or account-action changes while pending.");
+            completion.SetResult(AdministratorSshResult());
+            CompleteUiTask(operation);
+            Check(store.Load().SharedConnection.Username == "mdadm_test" &&
+                store.Load().SharedConnection.Password == "administrator-test-only-password!23" &&
+                store.Load().SharedConnections.Count == 2 &&
+                Field<Label>(administrator, "_hostStatus").Text.Contains("administrator credentials are already saved", StringComparison.Ordinal),
+                "A matching administrator result immediately saves its dedicated SSH credentials without removing RDP sharing.");
+            administrator.DialogResult = DialogResult.Cancel;
+        }
+        Check(store.Load().SharedConnection.Username == "mdadm_test",
+            "Cancelling other settings cannot discard dedicated administrator credentials already saved by host setup.");
+
+        using (var cancelled = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (_, _) =>
+            Task.FromException<HostConfigurationResult>(new OperationCanceledException())))
+        {
+            Check(!Field<CheckBox>(cancelled, "_sshAdministrator").Checked,
+                "Reopening settings requires a fresh administrator action choice even when saved SSH credentials use that account.");
+            Field<CheckBox>(cancelled, "_sshAdministrator").Checked = true;
+            CompleteUiTask(InvokeHostSetup(cancelled));
+            Check(store.Load().SharedConnection.Username == "mdadm_test" &&
+                Field<TextBox>(cancelled, "_username").Text == "mdadm_test" &&
+                Field<Label>(cancelled, "_hostStatus").Text.Contains("cancelled", StringComparison.Ordinal) &&
+                Field<CheckBox>(cancelled, "_sshAdministrator").Enabled && Field<Button>(cancelled, "_cancel").Enabled,
+                "Cancelling administrator setup preserves the existing endpoint and restores the role and close controls.");
+        }
+        using (var failed = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (_, _) =>
+            Task.FromException<HostConfigurationResult>(new HostSetupException("Administrator SSH account creation failed."))))
+        {
+            Field<CheckBox>(failed, "_sshAdministrator").Checked = true;
+            CompleteUiTask(InvokeHostSetup(failed));
+            Check(Field<Label>(failed, "_error").Text == "Administrator SSH account creation failed." &&
+                Field<TextBox>(failed, "_username").Text == "mdadm_test" &&
+                store.Load().SharedConnection.Username == "mdadm_test" && Field<Button>(failed, "_cancel").Enabled,
+                "A failed administrator operation shows its safe error without replacing saved connection credentials.");
+        }
+        foreach (bool requestedAccess in new[] { false, true })
+        {
+            byte[] savedBefore = File.ReadAllBytes(path);
+            using var mismatch = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (_, _) =>
+            {
+                HostConfigurationResult result = requestedAccess ? SshResult() : AdministratorSshResult();
+                result.Password = "mismatched-role-test-password";
+                return Task.FromResult(result);
+            });
+            Field<CheckBox>(mismatch, "_sshAdministrator").Checked = requestedAccess;
+            CompleteUiTask(InvokeHostSetup(mismatch));
+            Check(File.ReadAllBytes(path).SequenceEqual(savedBefore) &&
+                Field<TextBox>(mismatch, "_password").Text == "administrator-test-only-password!23" &&
+                Field<Label>(mismatch, "_error").Text.Contains("unexpected account access level", StringComparison.Ordinal),
+                "An unexpected returned account role cannot replace fields or persist credentials for either dedicated mode.");
+        }
+        int legacyCalls = 0;
+        using (var legacy = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHost: _ =>
+        {
+            legacyCalls++;
+            return Task.FromResult(SshResult());
+        }))
+        {
+            Field<CheckBox>(legacy, "_sshAdministrator").Checked = true;
+            CompleteUiTask(InvokeHostSetup(legacy));
+            Check(legacyCalls == 0 && Field<Label>(legacy, "_error").Text.Contains("does not support administrator SSH", StringComparison.Ordinal),
+                "An older injected provider cannot silently ignore an administrator account request.");
+        }
+        using (var switching = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (protocol, administrator) =>
+        {
+            requestedProtocol = protocol;
+            requestedAdministrator = administrator;
+            return Task.FromResult(HostResult());
+        }))
+        {
+            Field<CheckBox>(switching, "_sshAdministrator").Checked = true;
+            Field<ComboBox>(switching, "_protocol").SelectedItem = "RDP";
+            Check(!Field<CheckBox>(switching, "_sshAdministrator").Checked && !Field<CheckBox>(switching, "_sshAdministrator").Enabled &&
+                Field<Button>(switching, "_configureHostButton").Text == "Auto-configure Remote Desktop",
+                "Leaving SSH clears the administrator action choice and keeps the RDP action unchanged.");
+            CompleteUiTask(InvokeHostSetup(switching));
+            Check(requestedProtocol == "RDP" && !requestedAdministrator,
+                "RDP setup never sends the dedicated SSH administrator request.");
+            Field<ComboBox>(switching, "_protocol").SelectedItem = "SSH";
+            Field<CheckBox>(switching, "_sshAdministrator").Checked = true;
+            Field<ComboBox>(switching, "_protocol").SelectedItem = "VNC";
+            Check(!Field<CheckBox>(switching, "_sshAdministrator").Checked && !Field<CheckBox>(switching, "_sshAdministrator").Enabled &&
+                Field<Button>(switching, "_configureHostButton").Text == "Configure VNC desktop sharing",
+                "The VNC desktop-sharing action cannot retain an administrator SSH choice.");
+        }
+
+        int dedicatedCalls = 0;
+        string currentPassword = null;
+        profile = store.Load();
+        SharedConnectionSet.Upsert(profile, profile.SharedConnections.Single(connection => connection.Protocol == "SSH"));
+        store.Save(profile);
+        using (var current = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHostWithAccess: (_, _) =>
+        {
+            dedicatedCalls++;
+            return Task.FromResult(AdministratorSshResult());
+        }, configureProtocolCurrentAccount: (_, password) =>
+        {
+            currentPassword = password;
+            HostConfigurationResult result = SshResult();
+            result.Username = "current-ssh-test-user";
+            result.Password = password;
+            return Task.FromResult(result);
+        }, requestCurrentAccountPassword: _ => "current-test-only-password!23"))
+        {
+            Field<CheckBox>(current, "_sshAdministrator").Checked = true;
+            CompleteUiTask(InvokeCurrentAccountSetup(current));
+            Check(dedicatedCalls == 0 && currentPassword == "current-test-only-password!23" &&
+                store.Load().SharedConnection.Username == "current-ssh-test-user" &&
+                Field<Label>(current, "_hostStatus").Text.Contains("existing permissions", StringComparison.Ordinal),
+                "The Windows-account action uses its existing permissions and password independently of the dedicated administrator checkbox.");
+        }
+        using (var unexpectedCurrent = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolCurrentAccount: (_, _) =>
+            Task.FromResult(AdministratorSshResult()), requestCurrentAccountPassword: _ => "current-test-only-password!23"))
+        {
+            CompleteUiTask(InvokeCurrentAccountSetup(unexpectedCurrent));
+            Check(store.Load().SharedConnection.Username == "current-ssh-test-user" &&
+                Field<TextBox>(unexpectedCurrent, "_username").Text == "current-ssh-test-user" &&
+                Field<Label>(unexpectedCurrent, "_error").Text.Contains("unexpected account access level", StringComparison.Ordinal),
+                "A current-account response cannot claim dedicated administrator mode or replace its saved endpoint.");
+        }
+    }
+
+    private static HostConfigurationResult AdministratorSshResult()
+    {
+        HostConfigurationResult result = SshResult();
+        result.AdministratorAccess = true;
+        result.Username = "mdadm_test";
+        result.Password = "administrator-test-only-password!23";
+        return result;
     }
 
     private static Task InvokeHostSetup(Form dialog)

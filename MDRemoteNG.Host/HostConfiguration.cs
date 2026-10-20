@@ -19,6 +19,7 @@ public sealed class HostConfigurationResult
     public List<string> SshHostKeyFingerprints { get; set; } = [];
     public string CertificateFingerprint { get; set; } = "";
     public byte[] VncCertificatePfx { get; set; } = [];
+    public bool AdministratorAccess { get; set; }
 }
 
 // A class deliberately avoids a generated record ToString containing the password.
@@ -59,14 +60,24 @@ public interface IHostPlatform
     void EnsureSecureShellMembership(string username);
     void GrantSecureShellAccess(string sid);
     void PrepareVnc(int port, string helperExecutablePath, Guid instanceId);
+    void EnsureAdministratorSecureShellMembership(string username, string ownershipMarker);
+    void EnableAdministratorManagedAccount(string username, string ownershipMarker);
+    void SetAdministratorManagedAccountPassword(string username, string password, string ownershipMarker);
 }
 
 public static class HostConfiguration
 {
-    public static string AccountName(Guid instanceId, string protocol = "RDP") =>
-        (NormalizeProtocol(protocol) == "SSH" ? "mdssh_" : "mdrng_") + instanceId.ToString("N")[..12];
-    public static string OwnershipMarker(Guid instanceId, string protocol = "RDP") =>
-        "MDRemoteNG managed host " + instanceId.ToString("N") + (NormalizeProtocol(protocol) == "SSH" ? " SSH" : "");
+    public static string AccountName(Guid instanceId, string protocol = "RDP", bool administratorAccess = false)
+    {
+        ValidateAdministratorMode(protocol, administratorAccess);
+        return (administratorAccess ? "mdadm_" : NormalizeProtocol(protocol) == "SSH" ? "mdssh_" : "mdrng_") + instanceId.ToString("N")[..12];
+    }
+    public static string OwnershipMarker(Guid instanceId, string protocol = "RDP", bool administratorAccess = false)
+    {
+        ValidateAdministratorMode(protocol, administratorAccess);
+        return "MDRemoteNG managed host " + instanceId.ToString("N") +
+            (administratorAccess ? " SSH administrator" : NormalizeProtocol(protocol) == "SSH" ? " SSH" : "");
+    }
 
     public static IReadOnlyList<HostFirewallRule> FirewallRules(Guid instanceId, int rdpPort, string helperExecutablePath, string protocol = "RDP")
     {
@@ -88,15 +99,18 @@ public static class HostConfiguration
         return rules.AsReadOnly();
     }
 
-    public static HostConfigurationResult Configure(IHostPlatform platform, Guid instanceId, string helperExecutablePath, string protocol = "RDP")
+    public static HostConfigurationResult Configure(IHostPlatform platform, Guid instanceId, string helperExecutablePath, string protocol = "RDP", bool administratorAccess = false)
     {
         protocol = NormalizeProtocol(protocol);
+        ValidateAdministratorMode(protocol, administratorAccess);
         HostMachineInfo machine = InspectForConfiguration(platform, instanceId, helperExecutablePath, protocol);
-        string username = AccountName(instanceId, protocol);
-        string marker = OwnershipMarker(instanceId, protocol);
+        string username = AccountName(instanceId, protocol, administratorAccess);
+        string marker = OwnershipMarker(instanceId, protocol, administratorAccess);
         HostAccountInfo? account = platform.FindAccount(username);
-        if (account is not null && (account.Comment != marker || account.IsAdministrator))
-            throw new HostSetupException("The managed account name is already used by an unrelated or administrative account. No account was changed.");
+        if (account is not null && (account.Comment != marker || account.IsAdministrator != administratorAccess))
+            throw new HostSetupException(administratorAccess
+                ? "The managed administrator account name is already used by an unrelated account or an account with unexpected privileges. No account was changed."
+                : "The managed account name is already used by an unrelated or administrative account. No account was changed.");
 
         // Do service/firewall work before changing a password. Existing enabled accounts
         // rotate last; disabled accounts remain disabled until rotation has succeeded.
@@ -110,16 +124,30 @@ public static class HostConfiguration
                 platform.CreateAccount(username, password, marker);
                 created = true;
             }
-            if (protocol == "RDP") platform.EnsureRemoteDesktopMembership(username);
+            if (administratorAccess)
+            {
+                platform.EnsureAdministratorSecureShellMembership(username, marker);
+                // Match Group administrators may select different authentication or shell
+                // policy. Re-evaluate with the real enrolled group membership before the
+                // account is enabled or an existing credential is replaced.
+                prepared = PrepareProtocol(platform, machine, username, machine.MachineName, helperExecutablePath, instanceId, protocol);
+            }
+            else if (protocol == "RDP") platform.EnsureRemoteDesktopMembership(username);
             else platform.EnsureSecureShellMembership(username);
             if (created)
             {
-                platform.EnableManagedAccount(username);
+                if (administratorAccess) platform.EnableAdministratorManagedAccount(username, marker);
+                else platform.EnableManagedAccount(username);
             }
             else
             {
-                platform.SetAccountPassword(username, password);
-                if (!account!.IsEnabled) platform.EnableManagedAccount(username);
+                if (administratorAccess) platform.SetAdministratorManagedAccountPassword(username, password, marker);
+                else platform.SetAccountPassword(username, password);
+                if (!account!.IsEnabled)
+                {
+                    if (administratorAccess) platform.EnableAdministratorManagedAccount(username, marker);
+                    else platform.EnableManagedAccount(username);
+                }
             }
             return new HostConfigurationResult
             {
@@ -129,7 +157,9 @@ public static class HostConfiguration
                 Domain = protocol == "RDP" ? machine.MachineName : "",
                 Password = password,
                 SshHostKeyFingerprints = prepared.HostKeyFingerprints.ToList(),
-                StatusMessage = (protocol == "RDP" ? "Remote Desktop" : "SSH") + " is ready. A dedicated non-administrator account and local-subnet Private/Domain firewall rules have been configured."
+                AdministratorAccess = administratorAccess,
+                StatusMessage = (protocol == "RDP" ? "Remote Desktop" : "SSH") + " is ready. A dedicated " +
+                    (administratorAccess ? "administrator" : "non-administrator") + " account and local-subnet Private/Domain firewall rules have been configured."
             };
         }
         catch (Exception failure)
@@ -206,6 +236,12 @@ public static class HostConfiguration
     {
         "RDP" => "RDP", "SSH" => "SSH", _ => throw new HostSetupException("Choose RDP or SSH for Windows account auto-configuration.")
     };
+
+    private static void ValidateAdministratorMode(string protocol, bool administratorAccess)
+    {
+        if (administratorAccess && NormalizeProtocol(protocol) != "SSH")
+            throw new HostSetupException("A dedicated administrator account can only be configured for SSH.");
+    }
 
     private static HostMachineInfo InspectForConfiguration(IHostPlatform platform, Guid instanceId, string helperExecutablePath, string protocol)
     {

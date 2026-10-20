@@ -17,4 +17,7 @@ internal static class HostSetupClient
 
     public static Task<HostConfigurationResult> ConfigureCurrentAccountAsync(Guid instanceId, string protocol, string password, CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("UI checks must inject their protocol Windows account setup operation.");
+
+    public static Task<HostConfigurationResult> ConfigureAsync(Guid instanceId, string protocol, bool administratorAccess, CancellationToken cancellationToken = default) =>
+        throw new InvalidOperationException("UI checks must inject their host setup access operation.");
 }

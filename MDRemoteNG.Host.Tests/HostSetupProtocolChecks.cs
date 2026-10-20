@@ -103,6 +103,28 @@ internal static class HostSetupProtocolChecks
         byte[] managedFrame = HostSetupTransport.ProtectRequest(new HostSetupRequest(), setupPublicKey, request);
         Check(HostSetupTransport.ReadRequest(managedFrame, setupRecipient, request).Credentials is null,
             "Dedicated-account setup explicitly requests generation without an existing password.");
+        Check(!HostSetupTransport.ReadRequest(managedFrame, setupRecipient, request).AdministratorAccess,
+            "Existing setup requests default to standard account access.");
+        var administratorRequest = new HostSetupRequest { Protocol = "SSH", AdministratorAccess = true };
+        byte[] administratorFrame = HostSetupTransport.ProtectRequest(administratorRequest, setupPublicKey, request);
+        Check(HostSetupTransport.ReadRequest(administratorFrame, setupRecipient, request).AdministratorAccess,
+            "Dedicated administrator access survives the authenticated SSH request.");
+        administratorRequest.Protocol = "RDP";
+        Reject(() => HostSetupTransport.ReadRequest(HostSetupTransport.ProtectRequest(administratorRequest, setupPublicKey, request), setupRecipient, request),
+            "RDP setup cannot request the SSH administrator role.");
+        administratorRequest.Protocol = "VNC";
+        administratorRequest.Port = 5900;
+        Reject(() => HostSetupTransport.ReadRequest(HostSetupTransport.ProtectRequest(administratorRequest, setupPublicKey, request), setupRecipient, request),
+            "VNC setup cannot request a Windows administrator account.");
+        administratorRequest.Protocol = "SSH";
+        administratorRequest.Port = 0;
+        administratorRequest.Mode = "current-account";
+        administratorRequest.Credentials = new HostAccountCredentials { Username = "test", Domain = "TEST", Password = "test-only", Sid = "S-1-5-21-1-2-3-1001" };
+        Reject(() => HostSetupTransport.ReadRequest(HostSetupTransport.ProtectRequest(administratorRequest, setupPublicKey, request), setupRecipient, request),
+            "Current-account setup cannot promote an account through the dedicated administrator flag.");
+        var administratorReply = new HostSetupReply { Result = new HostConfigurationResult { Protocol = "SSH", AdministratorAccess = true } };
+        Check(HostSetupTransport.Unprotect(HostSetupTransport.Protect(administratorReply, publicKey, request), recipient, request).Result!.AdministratorAccess,
+            "The elevated result reports the dedicated administrator role through encrypted IPC.");
         var vncRequest = new HostSetupRequest { Protocol = "VNC", Port = 5900 };
         byte[] vncFrame = HostSetupTransport.ProtectRequest(vncRequest, setupPublicKey, request);
         Check(HostSetupTransport.ReadRequest(vncFrame, setupRecipient, request).Protocol == "VNC",
