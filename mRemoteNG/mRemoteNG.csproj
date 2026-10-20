@@ -530,6 +530,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ExternalConnectors\ExternalConnectors.csproj" />
+    <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
+    <ProjectReference Include="..\MDRemoteNG.Discovery\MDRemoteNG.Discovery.csproj" />
     <ProjectReference Include="..\mRemoteNG.PluginContracts\mRemoteNG.PluginContracts.csproj" />
     <ProjectReference Include="..\ObjectListView\ObjectListView.NetCore.csproj" />
   </ItemGroup>
@@ -681,29 +683,49 @@
   </ItemGroup>
   <Target Name="RelocateSatelliteAssembliesToLanguagesFolder" AfterTargets="Build">
     <ItemGroup>
-      <BuiltSatelliteResourceAssemblies Include="@(AppSatelliteResourceAssemblies->'$(OutDir)%(Culture)\mRemoteNG.resources.dll')" />
-      <PublishedSatelliteResourceAssemblies Include="@(AppSatelliteResourceAssemblies->'$(PublishDir)%(Culture)\mRemoteNG.resources.dll')"
-                                          Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+      <BuiltSatelliteResourceAssemblies Include="@(AppSatelliteResourceAssemblies->'$(OutDir)%(Culture)\$(AssemblyName).resources.dll')" />
       <BuiltSatelliteCultureDirectories Include="@(AppSatelliteResourceAssemblies->'$(OutDir)%(Culture)')" />
-      <PublishedSatelliteCultureDirectories Include="@(AppSatelliteResourceAssemblies->'$(PublishDir)%(Culture)')"
-                                          Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(BuiltSatelliteResourceAssemblies)"
-          DestinationFiles="@(AppSatelliteResourceAssemblies->'$(OutDir)Languages\%(Culture)\mRemoteNG.resources.dll')"
+          DestinationFiles="@(AppSatelliteResourceAssemblies->'$(OutDir)Languages\%(Culture)\$(AssemblyName).resources.dll')"
           SkipUnchangedFiles="true" />
 
-    <Copy SourceFiles="@(PublishedSatelliteResourceAssemblies)"
-          DestinationFiles="@(AppSatelliteResourceAssemblies->'$(PublishDir)Languages\%(Culture)\mRemoteNG.resources.dll')"
-          SkipUnchangedFiles="true"
-          Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
-
     <Delete Files="@(BuiltSatelliteResourceAssemblies)" />
-    <Delete Files="@(PublishedSatelliteResourceAssemblies)"
-            Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
     <RemoveDir Directories="@(BuiltSatelliteCultureDirectories)" />
-    <RemoveDir Directories="@(PublishedSatelliteCultureDirectories)"
-               Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')" />
+  </Target>
+  <Target Name="RelocatePublishedMdSatelliteAssemblies" AfterTargets="Publish">
+    <ItemGroup>
+      <_MdPublishedSatellites Include="$(PublishDir)**\$(AssemblyName).resources.dll"
+                              Exclude="$(PublishDir)Languages\**\*;$(PublishDir)Discovery\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MdPublishedSatellites)"
+          DestinationFiles="@(_MdPublishedSatellites->'$(PublishDir)Languages\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Delete Files="@(_MdPublishedSatellites)" />
+  </Target>
+  <Target Name="PackageMdDiscovery" AfterTargets="Build" BeforeTargets="PublishAfterBuild">
+    <PropertyGroup>
+      <MdDiscoveryDistribution>$(MSBuildProjectDirectory)\obj\md-discovery\$(Platform)\$(Configuration)\</MdDiscoveryDistribution>
+    </PropertyGroup>
+    <MSBuild Projects="..\MDRemoteNG.Discovery\MDRemoteNG.Discovery.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=win-$(Platform);SelfContained=$(SelfContained);PublishDir=$(MdDiscoveryDistribution)" />
+    <ItemGroup>
+      <MdDiscoveryFiles Include="$(MdDiscoveryDistribution)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(MdDiscoveryFiles)" DestinationFiles="@(MdDiscoveryFiles->'$(OutDir)Discovery\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).exe" DestinationFiles="$(TargetDir)MDRemoteNG.exe" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishMdDiscovery" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(TargetDir)MDRemoteNG.exe" RelativePath="MDRemoteNG.exe" CopyToPublishDirectory="PreserveNewest" />
+      <!-- Qualify the source-item metadata: unqualified Filename/RecursiveDir here
+           batches this glob against every pre-existing ResolvedFileToPublish item. -->
+      <_MdDiscoveryPublishFiles Include="$(MSBuildProjectDirectory)\obj\md-discovery\$(Platform)\$(Configuration)\**\*" />
+      <ResolvedFileToPublish Include="@(_MdDiscoveryPublishFiles)"
+                             RelativePath="Discovery\%(_MdDiscoveryPublishFiles.RecursiveDir)%(_MdDiscoveryPublishFiles.Filename)%(_MdDiscoveryPublishFiles.Extension)"
+                             CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
   </Target>
   <Target Name="PublishAfterBuild" AfterTargets="Build" Condition="'$(Configuration)' == 'Release Self-Contained'">
     <Message Text="Publishing self-contained application for $(Platform)..." Importance="high" />

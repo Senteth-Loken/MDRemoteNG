@@ -36,11 +36,11 @@ using System.Resources;
 //Build nr: <#= build #>
 
 // General Information
-[assembly: AssemblyTitle("mRemoteNG")]
-[assembly: AssemblyDescription("Multi-Remote Next Generation Connection Manager")]
+[assembly: AssemblyTitle("MDRemoteNG")]
+[assembly: AssemblyDescription("MDRemoteNG PIN protected remote connections manager")]
 [assembly: AssemblyConfiguration("<#= platformValue #>")]
 [assembly: AssemblyCompany("Profi-KOM Ltd.")]
-[assembly: AssemblyProduct("mRemoteNG Connection Manager")]
+[assembly: AssemblyProduct("MDRemoteNG")]
 [assembly: AssemblyCopyright("(c) <#= DateTime.UtcNow.Year #> mRemoteNG")]
 [assembly: AssemblyTrademark("Profi-KOM LTd.")]
 [assembly: AssemblyCulture("")]

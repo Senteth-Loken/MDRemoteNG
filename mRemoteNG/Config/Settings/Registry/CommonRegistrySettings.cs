@@ -87,11 +87,11 @@ namespace mRemoteNG.Config.Settings.Registry
 
             #region update registry settings
 
-            string updateSubkey = WindowsRegistryInfo.Update;
-
-            AllowCheckForUpdates = regValueUtility.GetBoolValue(hive, updateSubkey, nameof(AllowCheckForUpdates), true);
-            AllowCheckForUpdatesAutomatical = regValueUtility.GetBoolValue(hive, updateSubkey, nameof(AllowCheckForUpdatesAutomatical), AllowCheckForUpdates);
-            AllowCheckForUpdatesManual = regValueUtility.GetBoolValue(hive, updateSubkey, nameof(AllowCheckForUpdatesManual), AllowCheckForUpdates);
+            // The upstream updater installs mRemoteNG builds without this fork's PIN gate.
+            // Keep it disabled until MDRemoteNG has its own verified update feed.
+            AllowCheckForUpdates = false;
+            AllowCheckForUpdatesAutomatical = false;
+            AllowCheckForUpdatesManual = false;
             
 
             #endregion

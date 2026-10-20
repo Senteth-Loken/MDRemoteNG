@@ -441,6 +441,8 @@ namespace mRemoteNG.UI.Forms
             ProgramRoot.CloseSplash();
             new CredsAndConsSetup().LoadCredsAndCons();
 
+            InitializeMdDiscovery();
+
             PromptForUpdatesPreference();
             await CheckForUpdates();
         }
@@ -778,7 +780,7 @@ namespace mRemoteNG.UI.Forms
                 return;
             }
 
-            StringBuilder titleBuilder = new(Application.ProductName);
+            StringBuilder titleBuilder = new("MDRemoteNG");
             const string separator = " - ";
 
             if (Runtime.ConnectionsService.IsConnectionsFileLoaded)

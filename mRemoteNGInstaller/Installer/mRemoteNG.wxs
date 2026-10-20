@@ -1,6 +1,6 @@
 ﻿<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <?include $(sys.CURRENTDIR)Includes\Config.wxi?>
-  <Package Name="$(var.ProductNameWithPlatform)" Manufacturer="Profi-Kom Ltd." Version="$(var.ProductVersion)" UpgradeCode="$(var.UpgradeCode)" Language="1033" InstallerVersion="200" ProductCode="$(var.ProductCode)">
+  <Package Name="$(var.ProductNameWithPlatform)" Manufacturer="$(var.Company)" Version="$(var.ProductVersion)" UpgradeCode="$(var.UpgradeCode)" Language="1033" InstallerVersion="200" ProductCode="$(var.ProductCode)">
     
     <MajorUpgrade DowngradeErrorMessage="!(loc.Upgrade_NewerVersionInstalled)" Schedule="afterInstallExecute" />
     <MediaTemplate EmbedCab="yes" />
@@ -11,7 +11,7 @@
     <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize" />
     <Property Id="MAINEXE" Value="$(var.ExeProcessName)" />
     <Property Id="INSTALLDIR">
-      <RegistrySearch Id="mRemoteNGRegistry" Type="raw" Root="HKLM" Key="Software\mRemoteNG" Name="InstallDir" />
+      <RegistrySearch Id="MDRemoteNGRegistry" Type="raw" Root="HKLM" Key="Software\MDRemoteNG" Name="InstallDir" />
     </Property>
     <Property Id="RDP_DTLS_KB" Value="$(var.RdpDtlsKb)" />
     <Property Id="RDP_DTLS_UPDATE_INSTALLED" Value="0" Secure="yes" />
@@ -19,15 +19,12 @@
     <Property Id="RDP81_KB" Value="$(var.Rdp81Kb)" />
     <Property Id="MINIMUM_RDP_VERSION_INSTALLED" Value="0" Secure="yes" />
     <Property Id="REQUIREDDOTNETFRAMEWORKVERSION" Value="$(var.RequiredDotNetFrameworkVersion)" />
-    <Property Id="LEGACYVERSIONINSTALLED" Value="0" />
     <Icon Id="AppIcon.ico" SourceFile="Resources\AppIcon.ico" />
     <CustomActionRef Id="SaveCmdlineINSTALLDIR" />
 
     <InstallExecuteSequence>
       <Custom Action="CheckIfRdpDtlsUpdateInstalled" After="AppSearch" Condition="(NOT Installed) AND (VersionNT = 601 OR VersionNT64 = 601)" />
       <Custom Action="CheckIfMinimumRdpInstalled" After="CheckIfRdpDtlsUpdateInstalled" Condition="(NOT Installed) AND (VersionNT = 601 OR VersionNT64 = 601)" />
-      <Custom Action="CheckIfLegacyVersionInstalled" After="LaunchConditions" />
-      <Custom Action="UninstallLegacyVersion" After="CheckIfLegacyVersionInstalled" Condition="(NOT Installed) AND (LEGACYVERSIONINSTALLED = 1)" />
     </InstallExecuteSequence>
 
     <UI>

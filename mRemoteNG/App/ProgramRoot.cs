@@ -44,6 +44,13 @@ namespace mRemoteNG.App
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            // Every interactive launch must unlock before settings, connection files,
+            // command-line targets or an existing instance can be accessed.
+            if (!MDRemoteNgSession.Unlock())
+                return;
+
             InitializeSqliteProvider();
 
             // Ensure the real entry point is definitely STA
@@ -250,8 +257,6 @@ namespace mRemoteNG.App
         private static void StartApplication()
         {
             CatchAllUnhandledExceptions();
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
 
             // Match the OS dark mode for common controls (scrollbars, context menus, ...)
             // to the active theme. Applied once at startup; theme changes require a restart.
