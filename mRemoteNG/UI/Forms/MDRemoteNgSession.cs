@@ -31,6 +31,11 @@ namespace mRemoteNG.UI.Forms
                 // Read the latest profile so persisted failure counters and concurrent
                 // helper settings are not overwritten by a stale in-memory snapshot.
                 using var dialog = new MDNetworkSettingsDialog(Store, Store.Load());
+                dialog.HostConfigured += (_, _) =>
+                {
+                    Current = dialog.SavedProfile;
+                    SettingsChanged?.Invoke(null, EventArgs.Empty);
+                };
                 if (dialog.ShowDialog(owner) != DialogResult.OK) return false;
                 Current = dialog.SavedProfile;
                 SettingsChanged?.Invoke(null, EventArgs.Empty);

@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Diagnostics;
+using System.Security.Principal;
 using System.Windows.Forms;
 
 internal static class Program
@@ -30,6 +32,27 @@ internal static class Program
         try
         {
             Assembly app = Assembly.LoadFrom(Path.Combine(appDirectory, "mRemoteNG.dll"));
+            Type identityHelper = app.GetType("mRemoteNG.App.HostSetupIdentity", true);
+            string ownerSid = (string)identityHelper.GetMethod("ParentAccountSid", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { Environment.ProcessId });
+            using (var current = WindowsIdentity.GetCurrent())
+                if (ownerSid != current.User.Value) throw new Exception("Host setup did not identify the requesting Windows account.");
+            Console.WriteLine("PASS Host setup verifies the requesting process's Windows account through the native token API.");
+            using (Process probe = Process.Start(new ProcessStartInfo(Path.Combine(appDirectory, "MDRemoteNG.exe"))
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                Arguments = "--configure-host invalid"
+            }))
+            {
+                if (!probe.WaitForExit(15000))
+                {
+                    probe.Kill();
+                    throw new Exception("Malformed host setup arguments did not exit before interactive startup.");
+                }
+                if (probe.ExitCode != 1) throw new Exception("Malformed host setup arguments returned an unexpected exit code.");
+            }
+            Console.WriteLine("PASS Published host setup rejects malformed arguments before PIN/UI initialization.");
             Type runtime = app.GetType("mRemoteNG.App.Runtime", true);
             object list = runtime.GetProperty("WindowList").GetValue(null);
             if (list == null) throw new Exception("Window registry is null before any panel/layout load.");

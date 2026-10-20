@@ -38,6 +38,11 @@ namespace mRemoteNG.App
         public static void Main(string[] args)
         {
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+            if (HostSetupClient.TryRunElevatedSetup(args, out int setupExitCode))
+            {
+                Environment.ExitCode = setupExitCode;
+                return;
+            }
             try
             {
                 // Exception mode must be set before even the PIN dialog creates controls.

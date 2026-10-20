@@ -1,6 +1,9 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Fragment>
     <ComponentGroup Id="CG.MDRemoteNG" Directory="INSTALLDIR">
+      <Component Id="C.MDRemoteNGHost" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.Host.dll" KeyPath="yes" />
+      </Component>
       <!-- The desktop process uses these project assemblies beside mRemoteNG.dll. -->
       <Component Id="C.MDRemoteNGCore" Guid="*">
         <File Source="$(var.HarvestPath)\MDRemoteNG.Core.dll" KeyPath="yes" />
