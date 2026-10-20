@@ -174,6 +174,137 @@ Reject(() => HostConfiguration.ConfigureCurrentAccount(platform, instance, helpe
 Check(platform.Operations.SequenceEqual(["Inspect", "Validate", "Prepare", "GrantSid"]) && platform.Password == "",
     "A current-account membership failure never resets, deletes or disables the account.");
 
+platform = new FakePlatform { Machine = new HostMachineInfo(true, "WinNT", "Core", "TEST-PC", -1, false, false) };
+configured = HostConfiguration.Configure(platform, instance, helper, "SSH");
+Check(configured.Protocol == "SSH" && configured.Port == 2222 && configured.Domain == "" &&
+    configured.SshHostKeyFingerprints.SequenceEqual(FakePlatform.SshKeys),
+    "SSH supports Windows Home independently of RDP policies and returns the actual port and pinned host identities.");
+Check(platform.Operations.SequenceEqual(["Inspect", "Find", "PrepareSSH", "Create", "SSHGroups", "Enable"]),
+    "Dedicated SSH setup creates a standard account and grants SSH membership without touching RDP settings or groups.");
+platform = new FakePlatform();
+configured = HostConfiguration.ConfigureCurrentAccount(platform, instance, helper, currentCredentials, "SSH");
+Check(platform.Operations.SequenceEqual(["Inspect", "Validate", "PrepareSSH", "GrantSSHSid"]) && configured.Username == "TEST-DOMAIN\\alice" &&
+    configured.Domain == "" && configured.Password == currentCredentials.Password && platform.Password == "",
+    "Current-account SSH setup preserves the existing password and qualifies domain usernames for the SSH client.");
+Check(HostConfiguration.SshUsername("alice", "TEST-PC", "TEST-PC") == "alice" &&
+    HostConfiguration.SshUsername("alice", "MicrosoftAccount", "TEST-PC") == "alice",
+    "SSH uses the local account name for local and internet-connected Windows accounts.");
+platform = new FakePlatform { Account = new HostAccountInfo(HostConfiguration.OwnershipMarker(instance, "SSH"), false) };
+HostConfiguration.Configure(platform, instance, helper, "SSH");
+Check(platform.Operations.SequenceEqual(["Inspect", "Find", "PrepareSSH", "SSHGroups", "Password"]),
+    "An owned SSH account rotates its password only after SSH preparation and membership succeed.");
+Check(HostConfiguration.AccountName(instance, "SSH") != HostConfiguration.AccountName(instance) &&
+    HostConfiguration.OwnershipMarker(instance, "SSH") != HostConfiguration.OwnershipMarker(instance) &&
+    platform.LastPasswordAccount == HostConfiguration.AccountName(instance, "SSH"),
+    "Managed SSH and RDP use separate owned accounts so SSH password rotation preserves saved RDP credentials.");
+foreach (HostMachineInfo unsupported in new[]
+{
+    new HostMachineInfo(true, "LanmanNT", "ServerStandard", "TEST-DC", 3389),
+    new HostMachineInfo(true, "WinNT", "Core", "TEST-PC", 3389, OsBuild: 17000),
+    new HostMachineInfo(true, "WinNT", "Core", "TEST-PC", 3389, PolicyAllowsFirewall: false)
+})
+{
+    platform = new FakePlatform { Machine = unsupported };
+    try { HostConfiguration.Configure(platform, instance, helper, "SSH"); throw new Exception("Expected SSH preflight rejection."); }
+    catch (HostSetupException) { }
+    Check(platform.Operations.SequenceEqual(["Inspect"]), "SSH refuses domain controllers, unsupported Windows builds and firewall policy restrictions before mutations.");
+}
+platform = new FakePlatform { Failure = "PrepareSSH" };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH"), "Test failure");
+Check(!platform.Operations.Contains("Create") && !platform.Operations.Contains("Password"), "SSH installation or policy failures cannot create accounts or rotate passwords.");
+platform = new FakePlatform { Failure = "SSHGroups" };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH"), "Test failure");
+Check(platform.Operations.Last() == "Delete" && !platform.Operations.Contains("Enable"), "Failed new SSH-account membership rolls back its disabled account.");
+platform = new FakePlatform { SshFingerprints = [] };
+Reject(() => HostConfiguration.Configure(platform, instance, helper, "SSH"), "host identity");
+Check(!platform.Operations.Contains("Create"), "SSH cannot be auto-shared without a verified host fingerprint.");
+
+IReadOnlyList<HostFirewallRule> sshRules = HostConfiguration.FirewallRules(instance, 2222, helper, "SSH");
+Check(sshRules.Count == 3 && sshRules.All(rule => rule.Profiles == 3 && rule.RemoteAddresses == "LocalSubnet") &&
+    sshRules.Count(rule => rule.ServiceName == "sshd" && rule.LocalPort == 2222 && rule.Protocol == 6) == 1 && sshRules.All(rule => rule.ServiceName != "TermService"),
+    "SSH firewall rules scope only its actual TCP port and discovery, without enabling or changing RDP.");
+
+const string effectiveSsh = """
+    port 2222
+    passwordauthentication yes
+    authenticationmethods any
+    permittty yes
+    forcecommand none
+    listenaddress 0.0.0.0:2222
+    hostkey C:/ProgramData/ssh/ssh_host_ed25519_key
+    allowgroups administrators "openssh users"
+    """;
+var sshSettings = SshServerConfiguration.ParseEffective(effectiveSsh, "alice", true);
+Check(sshSettings.Port == 2222 && sshSettings.HostKeyPaths.Count == 1,
+    "Effective OpenSSH configuration determines the listener and preserves its standard OpenSSH Users access policy.");
+foreach (string unsafeConfiguration in new[]
+{
+    effectiveSsh.Replace("passwordauthentication yes", "passwordauthentication no"),
+    effectiveSsh.Replace("authenticationmethods any", "authenticationmethods publickey,password"),
+    effectiveSsh + "\ndenyusers alice",
+    effectiveSsh + "\nallowusers other-user",
+    effectiveSsh.Replace("allowgroups administrators \"openssh users\"", "allowgroups other-group"),
+    effectiveSsh.Replace("listenaddress 0.0.0.0:2222", "listenaddress 127.0.0.1:2222"),
+    effectiveSsh + "\nport 22",
+    effectiveSsh.Replace("forcecommand none", "forcecommand internal-sftp")
+})
+{
+    try { SshServerConfiguration.ParseEffective(unsafeConfiguration, "alice", true); throw new Exception("Expected SSH configuration rejection."); }
+    catch (HostSetupException) { }
+    Check(true, "Incompatible existing SSH authentication, account or listener policies are refused instead of weakened.");
+}
+foreach (string conditionalConfiguration in new[] { "Match Address 192.168.*\n PasswordAuthentication no", "Include\tcustom.conf", "Match=Address 192.168.*\nPasswordAuthentication no", "Include=custom.conf" })
+{
+    Reject(() => SshServerConfiguration.ValidateConfigurationText(conditionalConfiguration), "conditional or included");
+    Check(true, "Conditional SSH policies that cannot be verified for LAN peers are preserved and refused safely.");
+}
+SshServerConfiguration.ValidateConfigurationText("# Default Windows SSH configuration\nMatch Group administrators\n AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys");
+Check(true, "The standard Windows administrators host-key configuration remains supported.");
+string publicFingerprint = SshServerConfiguration.PublicKeyFingerprint("ssh-ed25519 " + Convert.ToBase64String(new byte[32]));
+Check(publicFingerprint.StartsWith("SHA256:", StringComparison.Ordinal) && publicFingerprint.Length == 50 && !publicFingerprint.EndsWith('='),
+    "SSH host pins use the canonical unpadded SHA256 public-key fingerprint format.");
+
+string sshExecutable = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "test-windows", "OpenSSH", "sshd.exe"));
+foreach (var unsafeProfile in new[] { (Enabled: false, Action: 0), (Enabled: true, Action: 1) })
+{
+    Reject(() => SshFirewallPolicy.ValidateProfile(unsafeProfile.Enabled, unsafeProfile.Action), "default inbound");
+    Check(true, "Disabled or default-Allow firewall profiles are refused before SSH can be installed or started.");
+}
+SshFirewallPolicy.ValidateProfile(true, 0);
+foreach (SshFirewallAllowance broadRule in new[]
+{
+    new SshFirewallAllowance(7, "TCP", "2222", sshExecutable, "Any", "Any"),
+    new SshFirewallAllowance(0, "TCP", "2222", sshExecutable, "Any", "LocalSubnet"),
+    new SshFirewallAllowance(3, "TCP", "2222", "Any", "sshd", "*"),
+    new SshFirewallAllowance(3, "TCP", "Any", "Any", "Any", "Any"),
+    new SshFirewallAllowance(7, "Any", "Any", "Any", "Any", "LocalSubnet"),
+    new SshFirewallAllowance(3, "TCP", "2000-3000", "Any", "Any", "0.0.0.0/0")
+})
+{
+    Reject(() => SshFirewallPolicy.ValidateRules([broadRule], 2222, sshExecutable), "existing enabled firewall");
+    Check(true, "Pre-existing broad SSH, any-program/service or overlapping-port allow rules are refused without changing administrator rules.");
+}
+SshFirewallPolicy.ValidateRules([
+    new SshFirewallAllowance(3, "TCP", "2222", sshExecutable, "sshd", "LocalSubnet"),
+    new SshFirewallAllowance(7, "TCP", "3389", "Any", "Any", "Any"),
+    new SshFirewallAllowance(7, "TCP", "Any", Path.Combine(Directory.GetCurrentDirectory(), "unrelated.exe"), "Any", "Any"),
+    new SshFirewallAllowance(7, "UDP", "2222", "Any", "Any", "Any"),
+    new SshFirewallAllowance(7, "TCP", "2222", "Any", "TermService", "Any")
+], 2222, sshExecutable);
+Check(true, "A scoped SSH allow rule coexists with unrelated ports, applications, UDP rules and other Windows services.");
+DateTime sshProcessStarted = new(2026, 10, 21, 0, 0, 0, DateTimeKind.Utc);
+SshServerConfiguration.VerifyLoadedFiles(sshProcessStarted, [sshProcessStarted.AddMinutes(-1)]);
+Reject(() => SshServerConfiguration.VerifyLoadedFiles(sshProcessStarted, [sshProcessStarted.AddSeconds(1)]), "changed after");
+Check(true, "Configuration or actual private host keys newer than the live SSH service cause a safe refusal instead of stale identity pins or a live-session restart.");
+
+platform = new FakePlatform { Machine = new HostMachineInfo(true, "WinNT", "Core", "TEST-PC", -1, false, false) };
+configured = VncHostConfiguration.Configure(platform, instance, helper, 5900);
+Check(configured.Protocol == "VNC" && configured.Port == 5900 && platform.Operations.SequenceEqual(["Inspect", "PrepareVNC"]) && configured.Password == "",
+    "VNC preparation supports Windows Home and changes only its firewall seam, without Windows account or RDP operations.");
+platform = new FakePlatform { Machine = new HostMachineInfo(true, "LanmanNT", "ServerStandard", "TEST-DC", 3389) };
+Reject(() => VncHostConfiguration.Configure(platform, instance, helper, 5900), "member servers");
+Check(platform.Operations.SequenceEqual(["Inspect"]), "VNC preparation rejects a domain controller before firewall or account changes.");
+
 passed += await HostSetupProtocolChecks.RunAsync();
 Console.WriteLine($"All {passed} host-configuration and protected-transport checks passed. Only a fake platform was used; no machine settings changed.");
 
@@ -187,6 +318,9 @@ sealed class FakePlatform : IHostPlatform
     public string Password { get; private set; } = "";
     public string Marker { get; private set; } = "";
     public string? GrantedSid { get; private set; }
+    public static readonly string[] SshKeys = ["SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"];
+    public IReadOnlyList<string> SshFingerprints { get; set; } = SshKeys;
+    public string? LastPasswordAccount { get; private set; }
     private void Perform(string operation)
     {
         Operations.Add(operation);
@@ -198,7 +332,7 @@ sealed class FakePlatform : IHostPlatform
     public void CreateAccount(string username, string password, string ownershipMarker) { Perform("Create"); Password = password; Marker = ownershipMarker; Account = new HostAccountInfo(ownershipMarker, false, false); }
     public void EnsureRemoteDesktopMembership(string username) => Perform("Groups");
     public void EnableManagedAccount(string username) { Perform("Enable"); Account = Account! with { IsEnabled = true }; }
-    public void SetAccountPassword(string username, string password) { Perform("Password"); Password = password; }
+    public void SetAccountPassword(string username, string password) { Perform("Password"); Password = password; LastPasswordAccount = username; }
     public void DeleteAccount(string username) => Perform("Delete");
     public void ValidateAccountCredentials(HostAccountCredentials credentials)
     {
@@ -206,4 +340,8 @@ sealed class FakePlatform : IHostPlatform
         if (credentials.Sid != CurrentSid) throw new HostSetupException("These credentials belong to a different Windows account.");
     }
     public void GrantRemoteDesktopAccess(string sid) { Perform("GrantSid"); GrantedSid = sid; }
+    public HostSshConfiguration PrepareSecureShell(string username, string domain, string helperExecutablePath, Guid instanceId) { Perform("PrepareSSH"); return new HostSshConfiguration(2222, SshFingerprints); }
+    public void EnsureSecureShellMembership(string username) => Perform("SSHGroups");
+    public void GrantSecureShellAccess(string sid) { Perform("GrantSSHSid"); GrantedSid = sid; }
+    public void PrepareVnc(int port, string helperExecutablePath, Guid instanceId) => Perform("PrepareVNC");
 }

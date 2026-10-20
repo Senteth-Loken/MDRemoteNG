@@ -1,6 +1,13 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Fragment>
     <ComponentGroup Id="CG.MDRemoteNG" Directory="INSTALLDIR">
+      <Component Id="C.MDRemoteNGDesktop" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.Desktop.dll" KeyPath="yes" />
+      </Component>
+      <Component Id="C.MDRemoteNGVncLibrary" Guid="*" Directory="dirEA5DE0DA87CCDD60F4B26843B622260F">
+        <File Source="$(var.HarvestPath)\Assemblies\RemoteViewing.dll" KeyPath="yes" />
+      </Component>
+      <Files Include="$(var.HarvestPath)\Licenses\**" Directory="INSTALLDIR" Subdirectory="Licenses" />
       <Component Id="C.MDRemoteNGHost" Guid="*">
         <File Source="$(var.HarvestPath)\MDRemoteNG.Host.dll" KeyPath="yes" />
       </Component>

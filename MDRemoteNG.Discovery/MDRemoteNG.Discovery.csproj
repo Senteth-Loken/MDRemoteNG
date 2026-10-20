@@ -16,6 +16,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
+    <ProjectReference Include="..\MDRemoteNG.Desktop\MDRemoteNG.Desktop.csproj" />
     <None Update="Configure-Discovery.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

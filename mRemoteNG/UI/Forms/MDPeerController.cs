@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using MDRemoteNG.Core;
 using MDRemoteNG.Discovery;
 using mRemoteNG.App;
 using mRemoteNG.Connection;
@@ -33,8 +34,8 @@ namespace mRemoteNG.UI.Forms
         private readonly ToolStripMenuItem _menu = new("&Local peers");
         private readonly System.Windows.Forms.Timer _timer = new() { Interval = 5000 };
         private readonly CancellationTokenSource _stop = new();
-        private readonly Dictionary<Guid, ConnectionInfo> _connections = new();
-        private readonly HashSet<Guid> _attempted = new();
+        private readonly Dictionary<(Guid Peer, string Protocol), ConnectionInfo> _connections = new();
+        private readonly HashSet<(Guid Peer, string Protocol)> _attempted = new();
         private bool _polling;
         private bool _disposed;
         private DateTimeOffset _lastFailure;
@@ -88,16 +89,16 @@ namespace mRemoteNG.UI.Forms
                 if (_disposed) return;
                 // A settings change invalidates any response that was already in flight.
                 if (!ReferenceEquals(profile, MDRemoteNgSession.Current)) return;
-                foreach (Guid id in _attempted.Except(peers.Select(p => p.InstanceId)).ToArray())
-                {
-                    _attempted.Remove(id);
-                    _connections.Remove(id);
-                }
+                var endpoints = peers.SelectMany(peer => peer.GetSharedConnections()
+                    .Select(connection => (Peer: peer, Connection: connection, Key: (peer.InstanceId, connection.Protocol)))).ToArray();
+                var current = endpoints.Select(endpoint => endpoint.Key).ToHashSet();
+                _attempted.RemoveWhere(key => !current.Contains(key));
+                foreach (var key in _connections.Keys.Where(key => !current.Contains(key)).ToArray()) _connections.Remove(key);
                 RenderMenu(peers);
                 if (profile?.AutoConnect == true)
-                    foreach (var peer in peers.Where(p => p.SharedConnection != null))
+                    foreach (var endpoint in endpoints)
                         if (_owner.Enabled && !Application.OpenForms.Cast<Form>().Any(f => f.Modal) &&
-                            _attempted.Add(peer.InstanceId)) OpenPeer(peer);
+                            _attempted.Add(endpoint.Key)) OpenPeer(endpoint.Peer, endpoint.Connection);
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
             catch (Exception ex)
@@ -130,35 +131,56 @@ namespace mRemoteNG.UI.Forms
             }
             foreach (var peer in peers.OrderBy(p => p.DisplayName))
             {
-                var item = new ToolStripMenuItem($"{peer.DisplayName.Replace("&", "&&")} ({peer.Address})" +
-                    (peer.SharedConnection == null ? " — no endpoint shared" : "")) { Enabled = peer.SharedConnection != null };
-                item.Click += (_, _) =>
+                IReadOnlyList<SharedConnection> connections = peer.GetSharedConnections();
+                string label = $"{peer.DisplayName.Replace("&", "&&")} ({peer.Address})";
+                var item = new ToolStripMenuItem(label + (connections.Count == 0 ? " — no endpoint shared" :
+                    connections.Count == 1 ? " — " + connections[0].Protocol : "")) { Enabled = connections.Count > 0 };
+                if (connections.Count == 1)
                 {
-                    if (ReferenceEquals(displayedProfile, MDRemoteNgSession.Current)) OpenPeer(peer);
-                };
+                    item.Click += (_, _) =>
+                    {
+                        if (ReferenceEquals(displayedProfile, MDRemoteNgSession.Current)) OpenPeer(peer, connections[0]);
+                    };
+                }
+                else
+                    foreach (SharedConnection connection in connections.OrderBy(connection => connection.Protocol))
+                    {
+                        var endpoint = new ToolStripMenuItem($"{connection.Protocol} (port {connection.Port})");
+                        endpoint.Click += (_, _) =>
+                        {
+                            if (ReferenceEquals(displayedProfile, MDRemoteNgSession.Current)) OpenPeer(peer, connection);
+                        };
+                        item.DropDownItems.Add(endpoint);
+                    }
                 _menu.DropDownItems.Add(item);
             }
         }
 
-        private void OpenPeer(DiscoveredPeer peer)
+        private void OpenPeer(DiscoveredPeer peer, SharedConnection shared)
         {
             if (_disposed || !MDRemoteNgSession.IsUnlocked || MDRemoteNgSession.Current?.DiscoveryEnabled != true) return;
-            var shared = peer.SharedConnection;
             if (shared == null) return;
             shared.Validate();
-            if (!_connections.TryGetValue(peer.InstanceId, out var connection))
+            var key = (peer.InstanceId, shared.Protocol);
+            if (!_connections.TryGetValue(key, out var connection))
             {
-                connection = new ConnectionInfo("mdpeer-" + peer.InstanceId.ToString("N")) { IsQuickConnect = true };
+                connection = new ConnectionInfo("mdpeer-" + peer.InstanceId.ToString("N") + "-" + shared.Protocol.ToLowerInvariant()) { IsQuickConnect = true };
                 connection.Inheritance.EverythingInherited = false;
-                _connections.Add(peer.InstanceId, connection);
+                _connections.Add(key, connection);
             }
-            connection.Name = peer.DisplayName;
+            connection.Name = peer.DisplayName + " (" + shared.Protocol + ")";
             connection.Hostname = peer.Address;
             connection.Protocol = shared.Protocol switch { "RDP" => ProtocolType.RDP, "SSH" => ProtocolType.SSH2, "VNC" => ProtocolType.VNC, _ => throw new InvalidDataException("Unsupported peer protocol.") };
             connection.Port = shared.Port;
             connection.Username = shared.Username;
             connection.Domain = shared.Domain;
             connection.Password = shared.Password;
+            connection.MdVncCertificateFingerprint = shared.CertificateFingerprint;
+            // Fingerprints contain only the validated SHA256/base64 alphabet. No peer
+            // text can add another PuTTY argument or weaken host-key verification.
+            connection.SSHOptions = shared.Protocol == "SSH"
+                ? string.Join(" ", shared.SshHostKeyFingerprints.Select(pin => "-hostkey \"" + pin.TrimEnd('=') + "\""))
+                : "";
             // These transient connections never enter the saved connection tree.
             Runtime.ConnectionInitiator.OpenConnection(connection);
         }

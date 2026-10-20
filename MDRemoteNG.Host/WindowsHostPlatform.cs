@@ -25,7 +25,7 @@ public sealed partial class WindowsHostPlatform : IHostPlatform
             Environment.MachineName, Convert.ToInt32(listener?.GetValue("PortNumber", 3389) ?? 3389),
             Convert.ToInt32(policy?.GetValue("fDenyTSConnections", 0) ?? 0) == 0,
             Convert.ToInt32(policy?.GetValue("UserAuthentication", 1) ?? 1) == 1,
-            FirewallPolicyAllowsChanges());
+            FirewallPolicyAllowsChanges(), Environment.OSVersion.Version.Build);
     }
 
     public HostAccountInfo? FindAccount(string username)
@@ -192,7 +192,7 @@ public sealed partial class WindowsHostPlatform : IHostPlatform
         }
     }
 
-    private static void AddFirewallRule(HostFirewallRule configuration)
+    private static void AddFirewallRule(HostFirewallRule configuration, bool block = false, int? profiles = null, string? remoteAddresses = null)
     {
         object? policyObject = null, ruleObject = null, rulesObject = null;
         try
@@ -206,10 +206,10 @@ public sealed partial class WindowsHostPlatform : IHostPlatform
             if (configuration.LocalPort.HasValue) rule.LocalPorts = configuration.LocalPort.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (configuration.ApplicationName != null) rule.ApplicationName = configuration.ApplicationName;
             if (configuration.ServiceName != null) rule.ServiceName = configuration.ServiceName;
-            rule.RemoteAddresses = configuration.RemoteAddresses;
-            rule.Profiles = configuration.Profiles;
+            rule.RemoteAddresses = remoteAddresses ?? configuration.RemoteAddresses;
+            rule.Profiles = profiles ?? configuration.Profiles;
             rule.Direction = 1; // Inbound.
-            rule.Action = 1; // Allow.
+            rule.Action = block ? 0 : 1;
             rule.EdgeTraversal = false;
             rule.Enabled = true;
             rulesObject = policy.Rules;

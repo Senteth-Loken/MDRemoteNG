@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
+    <PackageReference Include="RemoteViewing" />
+    <PackageReference Include="System.Drawing.Common" />
+    <None Include="ThirdParty\RemoteViewing-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" TargetPath="Licenses\RemoteViewing-LICENSE.txt" />
+  </ItemGroup>
+</Project>

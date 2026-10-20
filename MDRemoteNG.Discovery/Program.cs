@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MDRemoteNG.Core;
+using MDRemoteNG.Desktop;
 
 namespace MDRemoteNG.Discovery;
 
@@ -11,6 +12,7 @@ internal static class Program
 {
     private static readonly object HostGate = new();
     private static PeerDiscoveryHost? _host;
+    private static VncSharingHost? _vncHost;
 
     [STAThread]
     private static async Task Main(string[] args)
@@ -38,8 +40,10 @@ internal static class Program
         finally
         {
             PeerDiscoveryHost? old;
-            lock (HostGate) { old = _host; _host = null; }
+            VncSharingHost? oldDesktop;
+            lock (HostGate) { old = _host; _host = null; oldDesktop = _vncHost; _vncHost = null; }
             if (old is not null) await old.DisposeAsync().ConfigureAwait(false);
+            if (oldDesktop is not null) await oldDesktop.DisposeAsync().ConfigureAwait(false);
         }
         // Mutex ownership is tied to its acquiring thread, whereas async continuations may
         // move threads. Closing the sole process handle releases the singleton safely.
@@ -76,12 +80,14 @@ internal static class Program
             }
 
             bool unhealthy;
-            lock (HostGate) unhealthy = _host is not null && !_host.IsHealthy;
+            lock (HostGate) unhealthy = (_host is not null && !_host.IsHealthy) || (_vncHost is not null && !_vncHost.IsHealthy);
             if (fingerprint != currentFingerprint || unhealthy)
             {
                 PeerDiscoveryHost? old;
-                lock (HostGate) { old = _host; _host = null; }
+                VncSharingHost? oldDesktop;
+                lock (HostGate) { old = _host; _host = null; oldDesktop = _vncHost; _vncHost = null; }
                 if (old is not null) await old.DisposeAsync().ConfigureAwait(false);
+                if (oldDesktop is not null) await oldDesktop.DisposeAsync().ConfigureAwait(false);
                 currentFingerprint = fingerprint;
                 if (profile?.DiscoveryEnabled == true && subnets.Count > 0)
                 {
@@ -91,6 +97,24 @@ internal static class Program
                     {
                         await host.DisposeAsync().ConfigureAwait(false);
                         currentFingerprint = ""; // Retry transient adapter/port failures.
+                    }
+                    SharedConnection? vnc = SharedConnectionSet.GetConnections(profile.SharedConnection, profile.SharedConnections)
+                        .FirstOrDefault(endpoint => endpoint.Protocol == "VNC" && endpoint.CertificateFingerprint.Length > 0);
+                    if (vnc != null && profile.VncHost != null)
+                    {
+                        VncSharingHost? desktop = null;
+                        try
+                        {
+                            desktop = new VncSharingHost(profile.VncHost, vnc,
+                                address => NetworkScope.GetAllowedSubnets().Any(subnet => subnet.Contains(address)));
+                            desktop.Start();
+                            lock (HostGate) _vncHost = desktop;
+                        }
+                        catch (Exception ex) when (ex is SocketException or CryptographicException or IOException or InvalidDataException)
+                        {
+                            if (desktop != null) await desktop.DisposeAsync().ConfigureAwait(false);
+                            currentFingerprint = "";
+                        }
                     }
                 }
             }

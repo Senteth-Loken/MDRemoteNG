@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Net;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
@@ -15,7 +16,18 @@ public sealed class DiscoveredPeer
     // This address is the authenticated socket's LAN source, never an advertised redirect.
     public string Address { get; set; } = "";
     public SharedConnection? SharedConnection { get; set; }
+    public List<SharedConnection> SharedConnections { get; set; } = [];
     public DateTimeOffset LastSeenUtc { get; set; }
+
+    public IReadOnlyList<SharedConnection> GetSharedConnections() => SharedConnectionSet.GetConnections(SharedConnection, SharedConnections);
+
+    public void Validate()
+    {
+        if (InstanceId == Guid.Empty || DisplayName is null || DisplayName.Length > 128 ||
+            !IPAddress.TryParse(Address, out IPAddress? address) || !NetworkScope.IsPrivateAddress(address))
+            throw new InvalidDataException("Invalid discovered peer.");
+        SharedConnectionSet.Validate(SharedConnection, SharedConnections);
+    }
 }
 
 public static class DiscoveryClient
@@ -73,7 +85,19 @@ public static class DiscoveryClient
         await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
         await Framing.WriteAsync(pipe, "peers"u8.ToArray(), timeout.Token).ConfigureAwait(false);
         byte[] response = await Framing.ReadAsync(pipe, MaximumMessageSize, timeout.Token).ConfigureAwait(false);
-        try { return JsonSerializer.Deserialize<List<DiscoveredPeer>>(response) ?? []; }
+        try
+        {
+            List<DiscoveredPeer> peers = JsonSerializer.Deserialize<List<DiscoveredPeer>>(response) ?? [];
+            if (peers.Count > 128) throw new InvalidDataException("Too many discovered peers.");
+            var identities = new HashSet<Guid>();
+            foreach (DiscoveredPeer? peer in peers)
+            {
+                if (peer is null) throw new InvalidDataException("Invalid discovered peer.");
+                peer.Validate();
+                if (!identities.Add(peer.InstanceId)) throw new InvalidDataException("Duplicate discovered peer.");
+            }
+            return peers;
+        }
         finally { CryptographicOperations.ZeroMemory(response); }
     }
 

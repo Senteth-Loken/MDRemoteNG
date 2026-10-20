@@ -103,6 +103,20 @@ internal static class HostSetupProtocolChecks
         byte[] managedFrame = HostSetupTransport.ProtectRequest(new HostSetupRequest(), setupPublicKey, request);
         Check(HostSetupTransport.ReadRequest(managedFrame, setupRecipient, request).Credentials is null,
             "Dedicated-account setup explicitly requests generation without an existing password.");
+        var vncRequest = new HostSetupRequest { Protocol = "VNC", Port = 5900 };
+        byte[] vncFrame = HostSetupTransport.ProtectRequest(vncRequest, setupPublicKey, request);
+        Check(HostSetupTransport.ReadRequest(vncFrame, setupRecipient, request).Protocol == "VNC",
+            "The authenticated setup request carries the explicit VNC protocol and listener port.");
+        vncRequest.Mode = "current-account";
+        vncRequest.Credentials = new HostAccountCredentials { Username = "test", Domain = "TEST", Password = "test-only", Sid = "S-1-5-21-1-2-3-1001" };
+        Reject(() => HostSetupTransport.ReadRequest(HostSetupTransport.ProtectRequest(vncRequest, setupPublicKey, request), setupRecipient, request),
+            "VNC setup cannot request or consume Windows-account credentials.");
+        vncRequest = new HostSetupRequest { Protocol = "SSH", Port = 5900 };
+        Reject(() => HostSetupTransport.ReadRequest(HostSetupTransport.ProtectRequest(vncRequest, setupPublicKey, request), setupRecipient, request),
+            "Only VNC setup can supply a parent-selected listener port.");
+        vncRequest = new HostSetupRequest { Protocol = "UNKNOWN" };
+        Reject(() => HostSetupTransport.ReadRequest(HostSetupTransport.ProtectRequest(vncRequest, setupPublicKey, request), setupRecipient, request),
+            "Unknown setup protocols are rejected before machine changes.");
         using (var stream = new MemoryStream())
         {
             await HostSetupTransport.WriteAsync(stream, frame, CancellationToken.None);

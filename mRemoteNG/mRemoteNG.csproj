@@ -532,6 +532,7 @@
     <ProjectReference Include="..\ExternalConnectors\ExternalConnectors.csproj" />
     <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
     <ProjectReference Include="..\MDRemoteNG.Host\MDRemoteNG.Host.csproj" />
+    <ProjectReference Include="..\MDRemoteNG.Desktop\MDRemoteNG.Desktop.csproj" />
     <ProjectReference Include="..\MDRemoteNG.Discovery\MDRemoteNG.Discovery.csproj" />
     <ProjectReference Include="..\mRemoteNG.PluginContracts\mRemoteNG.PluginContracts.csproj" />
     <ProjectReference Include="..\ObjectListView\ObjectListView.NetCore.csproj" />

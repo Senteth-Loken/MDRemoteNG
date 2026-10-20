@@ -22,6 +22,8 @@ namespace mRemoteNG.App
     {
         public int Version { get; set; } = 1;
         public string Mode { get; set; } = "managed";
+        public string Protocol { get; set; } = "RDP";
+        public int Port { get; set; }
         public HostAccountCredentials? Credentials { get; set; }
     }
 
@@ -70,7 +72,10 @@ namespace mRemoteNG.App
         {
             var request = UnprotectPayload<HostSetupRequest>(frame, recipient, requestId, "request");
             if (request.Version != 1 || (request.Mode != "managed" && request.Mode != "current-account") ||
-                (request.Mode == "managed") != (request.Credentials is null))
+                (request.Mode == "managed") != (request.Credentials is null) ||
+                request.Protocol is not ("RDP" or "SSH" or "VNC") ||
+                (request.Protocol == "VNC" && (request.Mode != "managed" || request.Port is < 1 or > 65535)) ||
+                (request.Protocol != "VNC" && request.Port != 0))
                 throw new InvalidDataException("Invalid host setup request.");
             return request;
         }

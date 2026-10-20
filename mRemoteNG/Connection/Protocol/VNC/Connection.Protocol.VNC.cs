@@ -9,6 +9,7 @@ using mRemoteNG.Resources.Language;
 using System.Runtime.Versioning;
 using mRemoteNG.Security;
 using System.Runtime.ExceptionServices;
+using MDRemoteNG.Desktop;
 
 // ReSharper disable ArrangeAccessorOwnerBody
 
@@ -22,6 +23,7 @@ namespace mRemoteNG.Connection.Protocol.VNC
 
         private VncSharpCore.RemoteDesktop _vnc;
         private ConnectionInfo _info;
+        private VncClientTunnel _mdTunnel;
         private static volatile bool _isConnectionSuccessful;
         private static ExceptionDispatchInfo _socketexception;
         private static readonly ManualResetEvent TimeoutObject = new(false);
@@ -62,11 +64,20 @@ namespace mRemoteNG.Connection.Protocol.VNC
             SetEventHandlers();
             try
             {
-                if (TestConnect(_info.Hostname, _info.Port, 500))
+                if (!string.IsNullOrEmpty(_info.MdVncCertificateFingerprint))
+                {
+                    _mdTunnel?.Dispose();
+                    _mdTunnel = new VncClientTunnel(_info.Hostname, _info.Port, _info.MdVncCertificateFingerprint, _info.Password);
+                    _vnc.VncPort = _mdTunnel.Port;
+                    _vnc.Connect("127.0.0.1", _info.VNCViewOnly, _info.VNCSmartSizeMode != SmartSizeMode.SmartSNo);
+                }
+                else if (TestConnect(_info.Hostname, _info.Port, 500))
                     _vnc.Connect(_info.Hostname, _info.VNCViewOnly, _info.VNCSmartSizeMode != SmartSizeMode.SmartSNo);
             }
             catch (Exception ex)
             {
+                _mdTunnel?.Dispose();
+                _mdTunnel = null;
                 Runtime.MessageCollector.AddMessage(Messages.MessageClass.ErrorMsg,
                                                     Language.ConnectionOpenFailed + Environment.NewLine +
                                                     ex.Message);
@@ -78,6 +89,8 @@ namespace mRemoteNG.Connection.Protocol.VNC
 
         public override void Disconnect()
         {
+            _mdTunnel?.Dispose();
+            _mdTunnel = null;
             try
             {
                 _vnc.Disconnect();
@@ -147,7 +160,8 @@ namespace mRemoteNG.Connection.Protocol.VNC
             {
                 _vnc.ConnectComplete += VNCEvent_Connected;
                 _vnc.ConnectionLost += VNCEvent_Disconnected;
-                FrmMain.ClipboardChanged += VNCEvent_ClipboardChanged;
+                if (string.IsNullOrEmpty(_info.MdVncCertificateFingerprint))
+                    FrmMain.ClipboardChanged += VNCEvent_ClipboardChanged;
                 if (!Force.HasFlag(ConnectionInfo.Force.NoCredentials) && _info?.Password?.Length > 0)
                 {
                     _vnc.GetPassword = VNCEvent_Authenticate;
@@ -227,6 +241,8 @@ namespace mRemoteNG.Connection.Protocol.VNC
 
         private void VNCEvent_Disconnected(object sender, EventArgs e)
         {
+            _mdTunnel?.Dispose();
+            _mdTunnel = null;
             FrmMain.ClipboardChanged -= VNCEvent_ClipboardChanged;
             Event_Disconnected(this, @"VncSharp Disconnected.", null);
             Close();

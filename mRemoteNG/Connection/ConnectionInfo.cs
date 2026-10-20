@@ -28,7 +28,7 @@ namespace mRemoteNG.Connection
     [SupportedOSPlatform("windows")]
     [DefaultProperty("Name")]
     [TypeDescriptionProvider(typeof(ConnectionInfoTypeDescriptionProvider))]
-    public class ConnectionInfo : AbstractConnectionRecord, IHasParent, IInheritable
+    public partial class ConnectionInfo : AbstractConnectionRecord, IHasParent, IInheritable
     {
         private ConnectionInfoInheritance _inheritance;
         private readonly Dictionary<string, string> _pluginProperties = new(StringComparer.OrdinalIgnoreCase);

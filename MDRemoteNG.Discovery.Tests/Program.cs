@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Text.Json;
 using MDRemoteNG.Core;
 using MDRemoteNG.Discovery;
 
@@ -74,5 +76,50 @@ Check(PeerDiscoveryHost.Fingerprint(profile) != fingerprint, "PIN changes revoke
 profile.NormalizedPin = "AB1!";
 profile.DiscoveryEnabled = false;
 Check(PeerDiscoveryHost.Fingerprint(profile) != fingerprint, "Disabling discovery invalidates cached credentials");
+
+profile.DiscoveryEnabled = true;
+var ssh = new SharedConnection
+{
+    Protocol = "SSH", Port = 22, Username = "test-user", Password = "test-ssh",
+    SshHostKeyFingerprints = ["SHA256:" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=')]
+};
+SharedConnectionSet.Upsert(profile, ssh);
+var vnc = new SharedConnection { Protocol = "VNC", Port = 5900, Password = "test-vnc", CertificateFingerprint = new string('A', 64) };
+SharedConnectionSet.Upsert(profile, vnc);
+profile.VncHost = new VncHostSettings { CertificatePfx = Enumerable.Repeat((byte)0x42, 120).ToArray() };
+fingerprint = PeerDiscoveryHost.Fingerprint(profile);
+profile.SharedConnections.Single(connection => connection.Protocol == "RDP").Password = "secondary-changed";
+Check(PeerDiscoveryHost.Fingerprint(profile) != fingerprint, "Changing a secondary endpoint revokes cached peer credentials.");
+fingerprint = PeerDiscoveryHost.Fingerprint(profile);
+ssh.SshHostKeyFingerprints[0] = "SHA256:" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=');
+Check(PeerDiscoveryHost.Fingerprint(profile) != fingerprint, "Changing an SSH host-key pin restarts authenticated discovery.");
+fingerprint = PeerDiscoveryHost.Fingerprint(profile);
+vnc.CertificateFingerprint = new string('B', 64);
+Check(PeerDiscoveryHost.Fingerprint(profile) != fingerprint, "Changing a VNC certificate pin revokes the old peer profile.");
+fingerprint = PeerDiscoveryHost.Fingerprint(profile);
+profile.VncHost.CertificatePfx[0] ^= 1;
+Check(PeerDiscoveryHost.Fingerprint(profile) != fingerprint, "Private VNC host material changes invalidate local helper sessions.");
+var discovered = new DiscoveredPeer
+{
+    InstanceId = Guid.NewGuid(), DisplayName = "Multi peer", Address = "192.168.12.11",
+    SharedConnection = SharedConnectionSet.GetLegacyPrimary(profile.SharedConnection, profile.SharedConnections),
+    SharedConnections = profile.SharedConnections
+};
+discovered.Validate();
+var received = JsonSerializer.Deserialize<DiscoveredPeer>(JsonSerializer.Serialize(discovered))!;
+received.Validate();
+Check(received.GetSharedConnections().Count == 3 && received.SharedConnection?.Protocol == "RDP",
+    "Helper peer responses preserve all protocols and an older peer's compatible primary.");
+discovered.SharedConnection = null;
+discovered.SharedConnections = [vnc];
+discovered.Validate();
+Check(discovered.GetSharedConnections().Single().Protocol == "VNC", "A TLS-only peer remains connectable without a legacy primary endpoint.");
+discovered.SharedConnections = [vnc, vnc];
+try { discovered.Validate(); throw new Exception("Duplicate peer endpoints accepted"); }
+catch (InvalidDataException) { Check(true, "Duplicate protocol endpoints are rejected at the helper response boundary."); }
+discovered.SharedConnections = [vnc];
+discovered.Address = "8.8.8.8";
+try { discovered.Validate(); throw new Exception("Public peer redirect accepted"); }
+catch (InvalidDataException) { Check(true, "A helper response cannot redirect peer connections to a public address."); }
 
 Console.WriteLine($"All {passed} discovery checks passed.");

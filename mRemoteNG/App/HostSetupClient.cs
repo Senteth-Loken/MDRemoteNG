@@ -4,6 +4,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
@@ -11,6 +14,9 @@ using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using MDRemoteNG.Host;
+using MDRemoteNG.Core;
+using MDRemoteNG.Desktop;
+using mRemoteNG.UI.Forms;
 using Microsoft.Win32.SafeHandles;
 
 namespace mRemoteNG.App
@@ -29,10 +35,39 @@ namespace mRemoteNG.App
         private static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
 
         public static Task<HostConfigurationResult> ConfigureAsync(Guid instanceId, CancellationToken cancellationToken = default)
-            => ConfigureCoreAsync(instanceId, null, cancellationToken);
+            => ConfigureAsync(instanceId, "RDP", cancellationToken);
 
-        public static async Task<HostConfigurationResult> ConfigureCurrentAccountAsync(Guid instanceId, string password, CancellationToken cancellationToken = default)
+        public static async Task<HostConfigurationResult> ConfigureAsync(Guid instanceId, string protocol, CancellationToken cancellationToken = default)
         {
+            protocol = NormalizeProtocol(protocol);
+            if (protocol != "VNC") return await ConfigureCoreAsync(instanceId, null, protocol, 0, cancellationToken).ConfigureAwait(false);
+            var material = VncSecurity.Create();
+            var current = MDRemoteNgSession.Current;
+            int port = current == null ? FreeVncPort() :
+                SharedConnectionSet.GetConnections(current.SharedConnection, current.SharedConnections)
+                    .FirstOrDefault(endpoint => endpoint.Protocol == "VNC" && endpoint.CertificateFingerprint.Length > 0)?.Port ?? FreeVncPort();
+            HostConfigurationResult result = await ConfigureCoreAsync(instanceId, null, protocol, port, cancellationToken).ConfigureAwait(false);
+            result.Password = material.Password;
+            result.CertificateFingerprint = material.Fingerprint;
+            result.VncCertificatePfx = material.Settings.CertificatePfx;
+            return result;
+        }
+
+        private static int FreeVncPort()
+        {
+            using var candidate = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { ExclusiveAddressUse = true };
+            try { candidate.Bind(new IPEndPoint(IPAddress.Any, 5900)); }
+            catch (SocketException) { candidate.Bind(new IPEndPoint(IPAddress.Any, 0)); }
+            return ((IPEndPoint)candidate.LocalEndPoint).Port;
+        }
+
+        public static Task<HostConfigurationResult> ConfigureCurrentAccountAsync(Guid instanceId, string password, CancellationToken cancellationToken = default)
+            => ConfigureCurrentAccountAsync(instanceId, "RDP", password, cancellationToken);
+
+        public static async Task<HostConfigurationResult> ConfigureCurrentAccountAsync(Guid instanceId, string protocol, string password, CancellationToken cancellationToken = default)
+        {
+            protocol = NormalizeProtocol(protocol);
+            if (protocol == "VNC") throw new HostSetupException("VNC shares the signed-in desktop using generated MDRemoteNG credentials. Use its Auto-configure button.");
             using var identity = WindowsIdentity.GetCurrent();
             string name = identity.Name;
             int separator = name.IndexOf('\\');
@@ -47,10 +82,15 @@ namespace mRemoteNG.App
             };
             // Validate before asking for elevation, without changing the account.
             await Task.Run(() => WindowsHostPlatform.ValidateCredentials(credentials), cancellationToken).ConfigureAwait(false);
-            return await ConfigureCoreAsync(instanceId, credentials, cancellationToken).ConfigureAwait(false);
+            return await ConfigureCoreAsync(instanceId, credentials, protocol, 0, cancellationToken).ConfigureAwait(false);
         }
 
-        private static async Task<HostConfigurationResult> ConfigureCoreAsync(Guid instanceId, HostAccountCredentials credentials, CancellationToken cancellationToken)
+        private static string NormalizeProtocol(string protocol) => protocol?.ToUpperInvariant() switch
+        {
+            "RDP" => "RDP", "SSH" => "SSH", "VNC" => "VNC", _ => throw new HostSetupException("Choose RDP, SSH or VNC for host setup.")
+        };
+
+        private static async Task<HostConfigurationResult> ConfigureCoreAsync(Guid instanceId, HostAccountCredentials credentials, string protocol, int port, CancellationToken cancellationToken)
         {
             if (instanceId == Guid.Empty) throw new HostSetupException("The local MDRemoteNG profile is unavailable.");
             Guid requestId = Guid.NewGuid();
@@ -84,7 +124,7 @@ namespace mRemoteNG.App
                 start.ArgumentList.Add(Convert.ToBase64String(recipient.ExportSubjectPublicKeyInfo()));
                 child = await Task.Run(() => Process.Start(start), cancellationToken).ConfigureAwait(false)
                     ?? throw new HostSetupException("Windows could not start host configuration.");
-                timeout.CancelAfter(TimeSpan.FromMinutes(5));
+                timeout.CancelAfter(TimeSpan.FromMinutes(protocol == "SSH" ? 15 : 5));
                 Task exit = child.WaitForExitAsync();
                 for (int attempts = 0; ; attempts++)
                 {
@@ -102,6 +142,8 @@ namespace mRemoteNG.App
                 var request = new HostSetupRequest
                 {
                     Mode = credentials == null ? "managed" : "current-account",
+                    Protocol = protocol,
+                    Port = port,
                     Credentials = credentials
                 };
                 await HostSetupTransport.WriteAsync(pipe, HostSetupTransport.ProtectRequest(request, setupKey, requestId), timeout.Token).ConfigureAwait(false);
@@ -111,13 +153,28 @@ namespace mRemoteNG.App
                 if (reply.Result == null) throw new HostSetupException(reply.Error);
                 if (child.ExitCode != 0) throw new HostSetupException("Windows could not finish host configuration.");
                 HostConfigurationResult result = reply.Result;
-                if (result.Protocol != "RDP" || result.Port is < 1 or > 65535 ||
+                if (protocol == "VNC")
+                {
+                    if (result.Protocol != "VNC" || result.Port != port || !string.IsNullOrEmpty(result.Username) ||
+                        !string.IsNullOrEmpty(result.Domain) || !string.IsNullOrEmpty(result.Password) ||
+                        result.VncCertificatePfx?.Length != 0 || result.StatusMessage?.Length > 2048)
+                        throw new HostSetupException("Windows returned invalid VNC firewall setup details.");
+                    return result;
+                }
+                string expectedDomain = protocol == "SSH" ? "" : credentials?.Domain ?? Environment.MachineName;
+                string expectedUsername = credentials == null ? HostConfiguration.AccountName(instanceId, protocol) :
+                    protocol == "SSH" ? HostConfiguration.SshUsername(credentials.Username, credentials.Domain, Environment.MachineName) : credentials.Username;
+                if (result.Protocol != protocol || result.Port is < 1 or > 65535 ||
                     string.IsNullOrWhiteSpace(result.Username) || result.Username.Length > 256 ||
-                    !string.Equals(result.Domain, credentials?.Domain ?? Environment.MachineName, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(result.Domain, expectedDomain, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(result.Username, expectedUsername, StringComparison.OrdinalIgnoreCase) ||
                     string.IsNullOrEmpty(result.Password) || result.Password.Length > 1024 || result.StatusMessage?.Length > 2048 ||
-                    (credentials != null && (!string.Equals(result.Username, credentials.Username, StringComparison.OrdinalIgnoreCase) ||
-                                             result.Password != credentials.Password)))
+                    (credentials != null && result.Password != credentials.Password))
                     throw new HostSetupException("Windows returned incomplete host configuration details. Run auto-configuration again.");
+                new SharedConnection { Protocol = result.Protocol, Port = result.Port, Username = result.Username, Domain = result.Domain,
+                    Password = result.Password, SshHostKeyFingerprints = result.SshHostKeyFingerprints }.Validate();
+                if (protocol == "SSH" && result.SshHostKeyFingerprints.Count == 0)
+                    throw new HostSetupException("Windows could not verify the SSH server identity.");
                 return result;
             }
             catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
@@ -179,6 +236,7 @@ namespace mRemoteNG.App
                 HostSetupTransport.ProtectHello(setupKey.ExportSubjectPublicKeyInfo(), publicKey, requestId), timeout.Token).ConfigureAwait(false);
             byte[] requestFrame = await HostSetupTransport.ReadAsync(pipe, timeout.Token).ConfigureAwait(false);
             HostSetupRequest request = HostSetupTransport.ReadRequest(requestFrame, setupKey, requestId);
+            timeout.CancelAfter(TimeSpan.FromMinutes(request.Protocol == "SSH" ? 15 : 5));
             HostSetupReply reply;
             try
             {
@@ -192,9 +250,10 @@ namespace mRemoteNG.App
                 {
                     if (!string.Equals(request.Credentials.Sid, HostSetupIdentity.ParentAccountSid(parentId), StringComparison.Ordinal))
                         throw new HostSetupException("The requested Windows account does not match the application user.");
-                    result = HostConfiguration.ConfigureCurrentAccount(platform, instanceId, helper, request.Credentials);
+                    result = HostConfiguration.ConfigureCurrentAccount(platform, instanceId, helper, request.Credentials, request.Protocol);
                 }
-                else result = HostConfiguration.Configure(platform, instanceId, helper);
+                else if (request.Protocol == "VNC") result = VncHostConfiguration.Configure(platform, instanceId, helper, request.Port);
+                else result = HostConfiguration.Configure(platform, instanceId, helper, request.Protocol);
                 reply = new HostSetupReply { Result = result };
             }
             catch (HostSetupException exception) { reply = new HostSetupReply { Error = exception.Message }; }

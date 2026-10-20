@@ -16,6 +16,9 @@ public sealed class HostConfigurationResult
     public string Domain { get; set; } = "";
     public string Password { get; set; } = "";
     public string StatusMessage { get; set; } = "";
+    public List<string> SshHostKeyFingerprints { get; set; } = [];
+    public string CertificateFingerprint { get; set; } = "";
+    public byte[] VncCertificatePfx { get; set; } = [];
 }
 
 // A class deliberately avoids a generated record ToString containing the password.
@@ -28,9 +31,10 @@ public sealed class HostAccountCredentials
 }
 
 public sealed record HostMachineInfo(bool IsElevated, string ProductType, string EditionId,
-    string MachineName, int RdpPort, bool PolicyAllowsRdp = true, bool PolicyAllowsNla = true, bool PolicyAllowsFirewall = true);
+    string MachineName, int RdpPort, bool PolicyAllowsRdp = true, bool PolicyAllowsNla = true, bool PolicyAllowsFirewall = true, int OsBuild = 17763);
 
 public sealed record HostAccountInfo(string Comment, bool IsAdministrator, bool IsEnabled = true);
+public sealed record HostSshConfiguration(int Port, IReadOnlyList<string> HostKeyFingerprints);
 
 public sealed record HostFirewallRule(string Name, int Protocol, int? LocalPort, string? ApplicationName, string? ServiceName)
 {
@@ -51,40 +55,52 @@ public interface IHostPlatform
     void DeleteAccount(string username);
     void ValidateAccountCredentials(HostAccountCredentials credentials);
     void GrantRemoteDesktopAccess(string sid);
+    HostSshConfiguration PrepareSecureShell(string username, string domain, string helperExecutablePath, Guid instanceId);
+    void EnsureSecureShellMembership(string username);
+    void GrantSecureShellAccess(string sid);
+    void PrepareVnc(int port, string helperExecutablePath, Guid instanceId);
 }
 
 public static class HostConfiguration
 {
-    public static string AccountName(Guid instanceId) => "mdrng_" + instanceId.ToString("N")[..12];
-    public static string OwnershipMarker(Guid instanceId) => "MDRemoteNG managed host " + instanceId.ToString("N");
+    public static string AccountName(Guid instanceId, string protocol = "RDP") =>
+        (NormalizeProtocol(protocol) == "SSH" ? "mdssh_" : "mdrng_") + instanceId.ToString("N")[..12];
+    public static string OwnershipMarker(Guid instanceId, string protocol = "RDP") =>
+        "MDRemoteNG managed host " + instanceId.ToString("N") + (NormalizeProtocol(protocol) == "SSH" ? " SSH" : "");
 
-    public static IReadOnlyList<HostFirewallRule> FirewallRules(Guid instanceId, int rdpPort, string helperExecutablePath)
+    public static IReadOnlyList<HostFirewallRule> FirewallRules(Guid instanceId, int rdpPort, string helperExecutablePath, string protocol = "RDP")
     {
         if (instanceId == Guid.Empty || rdpPort is < 1 or > 65535)
             throw new HostSetupException("The host firewall settings are invalid.");
         string helper = Path.GetFullPath(helperExecutablePath);
         string prefix = "MDRemoteNG " + instanceId.ToString("N")[..12];
-        return Array.AsReadOnly(new[]
+        var rules = new List<HostFirewallRule>
         {
-            new HostFirewallRule(prefix + " RDP TCP", 6, rdpPort, null, "TermService"),
-            new HostFirewallRule(prefix + " RDP UDP", 17, rdpPort, null, "TermService"),
             new HostFirewallRule(prefix + " Discovery UDP", 17, 48765, helper, null),
             new HostFirewallRule(prefix + " Discovery TCP", 6, null, helper, null)
-        });
+        };
+        if (NormalizeProtocol(protocol) == "RDP")
+        {
+            rules.Insert(0, new HostFirewallRule(prefix + " RDP UDP", 17, rdpPort, null, "TermService"));
+            rules.Insert(0, new HostFirewallRule(prefix + " RDP TCP", 6, rdpPort, null, "TermService"));
+        }
+        else rules.Insert(0, new HostFirewallRule(prefix + " SSH TCP", 6, rdpPort, null, "sshd"));
+        return rules.AsReadOnly();
     }
 
-    public static HostConfigurationResult Configure(IHostPlatform platform, Guid instanceId, string helperExecutablePath)
+    public static HostConfigurationResult Configure(IHostPlatform platform, Guid instanceId, string helperExecutablePath, string protocol = "RDP")
     {
-        HostMachineInfo machine = InspectForConfiguration(platform, instanceId, helperExecutablePath);
-        string username = AccountName(instanceId);
-        string marker = OwnershipMarker(instanceId);
+        protocol = NormalizeProtocol(protocol);
+        HostMachineInfo machine = InspectForConfiguration(platform, instanceId, helperExecutablePath, protocol);
+        string username = AccountName(instanceId, protocol);
+        string marker = OwnershipMarker(instanceId, protocol);
         HostAccountInfo? account = platform.FindAccount(username);
         if (account is not null && (account.Comment != marker || account.IsAdministrator))
             throw new HostSetupException("The managed account name is already used by an unrelated or administrative account. No account was changed.");
 
         // Do service/firewall work before changing a password. Existing enabled accounts
         // rotate last; disabled accounts remain disabled until rotation has succeeded.
-        platform.PrepareRemoteDesktop(machine.RdpPort, helperExecutablePath, instanceId);
+        HostSshConfiguration prepared = PrepareProtocol(platform, machine, username, machine.MachineName, helperExecutablePath, instanceId, protocol);
         string password = GeneratePassword();
         bool created = false;
         try
@@ -94,7 +110,8 @@ public static class HostConfiguration
                 platform.CreateAccount(username, password, marker);
                 created = true;
             }
-            platform.EnsureRemoteDesktopMembership(username);
+            if (protocol == "RDP") platform.EnsureRemoteDesktopMembership(username);
+            else platform.EnsureSecureShellMembership(username);
             if (created)
             {
                 platform.EnableManagedAccount(username);
@@ -106,11 +123,13 @@ public static class HostConfiguration
             }
             return new HostConfigurationResult
             {
-                Port = machine.RdpPort,
+                Protocol = protocol,
+                Port = prepared.Port,
                 Username = username,
-                Domain = machine.MachineName,
+                Domain = protocol == "RDP" ? machine.MachineName : "",
                 Password = password,
-                StatusMessage = "Remote Desktop is ready. A dedicated non-administrator account and local-subnet Private/Domain firewall rules have been configured."
+                SshHostKeyFingerprints = prepared.HostKeyFingerprints.ToList(),
+                StatusMessage = (protocol == "RDP" ? "Remote Desktop" : "SSH") + " is ready. A dedicated non-administrator account and local-subnet Private/Domain firewall rules have been configured."
             };
         }
         catch (Exception failure)
@@ -128,22 +147,26 @@ public static class HostConfiguration
     }
 
     public static HostConfigurationResult ConfigureCurrentAccount(IHostPlatform platform, Guid instanceId,
-        string helperExecutablePath, HostAccountCredentials credentials)
+        string helperExecutablePath, HostAccountCredentials credentials, string protocol = "RDP")
     {
+        protocol = NormalizeProtocol(protocol);
         ValidateCredentialsInput(credentials);
-        HostMachineInfo machine = InspectForConfiguration(platform, instanceId, helperExecutablePath);
+        HostMachineInfo machine = InspectForConfiguration(platform, instanceId, helperExecutablePath, protocol);
         // Reauthenticate inside the elevated process before any service, firewall or group
         // changes. In particular, elevation may have used a different administrator account.
         platform.ValidateAccountCredentials(credentials);
-        platform.PrepareRemoteDesktop(machine.RdpPort, helperExecutablePath, instanceId);
-        platform.GrantRemoteDesktopAccess(credentials.Sid);
+        HostSshConfiguration prepared = PrepareProtocol(platform, machine, credentials.Username, credentials.Domain, helperExecutablePath, instanceId, protocol);
+        if (protocol == "RDP") platform.GrantRemoteDesktopAccess(credentials.Sid);
+        else platform.GrantSecureShellAccess(credentials.Sid);
         return new HostConfigurationResult
         {
-            Port = machine.RdpPort,
-            Username = credentials.Username,
-            Domain = credentials.Domain,
+            Protocol = protocol,
+            Port = prepared.Port,
+            Username = protocol == "RDP" ? credentials.Username : SshUsername(credentials.Username, credentials.Domain, machine.MachineName),
+            Domain = protocol == "RDP" ? credentials.Domain : "",
             Password = credentials.Password,
-            StatusMessage = "Remote Desktop is ready for your Windows account with local-subnet Private/Domain firewall rules. Your Windows password was not changed."
+            SshHostKeyFingerprints = prepared.HostKeyFingerprints.ToList(),
+            StatusMessage = (protocol == "RDP" ? "Remote Desktop" : "SSH") + " is ready for your Windows account with local-subnet Private/Domain firewall rules. Your Windows password was not changed."
         };
     }
 
@@ -155,21 +178,49 @@ public static class HostConfiguration
             (credentials.Domain.Length == 0 && !credentials.Username.Contains('@')) ||
             credentials.Username.Length > 256 || credentials.Domain.Length > 256 || credentials.Password.Length > 512 || credentials.Sid.Length > 184 ||
             new[] { credentials.Username, credentials.Domain, credentials.Password, credentials.Sid }.Any(value => value.Contains('\0')))
-            throw new HostSetupException("Enter the Windows account password and its account details. A Windows Hello PIN cannot be used for Remote Desktop password sharing.");
+            throw new HostSetupException("Enter the Windows account password and its account details. A Windows Hello PIN cannot be used for remote access password sharing.");
     }
 
-    private static HostMachineInfo InspectForConfiguration(IHostPlatform platform, Guid instanceId, string helperExecutablePath)
+    public static string SshUsername(string username, string domain, string machineName) =>
+        string.IsNullOrEmpty(domain) || domain == "." || domain.Equals(machineName, StringComparison.OrdinalIgnoreCase) || domain.Equals("MicrosoftAccount", StringComparison.OrdinalIgnoreCase)
+            ? username : domain + "\\" + username;
+
+    private static HostSshConfiguration PrepareProtocol(IHostPlatform platform, HostMachineInfo machine, string username, string domain, string helper,
+        Guid instanceId, string protocol)
+    {
+        if (protocol == "SSH")
+        {
+            if (domain.Equals("AzureAD", StringComparison.OrdinalIgnoreCase))
+                throw new HostSetupException("Windows OpenSSH cannot authenticate a Microsoft Entra account. Use the dedicated account option for SSH.");
+            HostSshConfiguration prepared = platform.PrepareSecureShell(username, domain, helper, instanceId);
+            if (prepared.Port is < 1 or > 65535) throw new HostSetupException("The SSH listener port is invalid.");
+            if (prepared.HostKeyFingerprints.Count is < 1 or > 8 || prepared.HostKeyFingerprints.Any(key => !key.StartsWith("SHA256:", StringComparison.Ordinal)))
+                throw new HostSetupException("Windows could not verify the SSH host identity.");
+            return prepared;
+        }
+        platform.PrepareRemoteDesktop(machine.RdpPort, helper, instanceId);
+        return new HostSshConfiguration(machine.RdpPort, []);
+    }
+
+    private static string NormalizeProtocol(string protocol) => protocol?.ToUpperInvariant() switch
+    {
+        "RDP" => "RDP", "SSH" => "SSH", _ => throw new HostSetupException("Choose RDP or SSH for Windows account auto-configuration.")
+    };
+
+    private static HostMachineInfo InspectForConfiguration(IHostPlatform platform, Guid instanceId, string helperExecutablePath, string protocol)
     {
         ArgumentNullException.ThrowIfNull(platform);
         if (instanceId == Guid.Empty) throw new HostSetupException("The MDRemoteNG installation identity is missing.");
         if (string.IsNullOrWhiteSpace(helperExecutablePath)) throw new HostSetupException("The discovery helper path is missing.");
         HostMachineInfo machine = platform.Inspect();
         if (!machine.IsElevated) throw new HostSetupException("Approve the Windows administrator prompt to configure this host.");
-        if (!SupportsRemoteDesktop(machine))
+        if (protocol == "RDP" && !SupportsRemoteDesktop(machine))
             throw new HostSetupException("This Windows edition cannot host Remote Desktop. Windows Pro, Enterprise, Education or a member server is required.");
-        if (!machine.PolicyAllowsRdp || !machine.PolicyAllowsNla || !machine.PolicyAllowsFirewall)
-            throw new HostSetupException("An organisation policy prevents enabling Remote Desktop with Network Level Authentication. Contact your administrator.");
-        if (machine.RdpPort is < 1 or > 65535 || string.IsNullOrWhiteSpace(machine.MachineName))
+        if (protocol == "SSH" && (!new[] { "WinNT", "ServerNT" }.Contains(machine.ProductType, StringComparer.OrdinalIgnoreCase) || machine.OsBuild < 17763))
+            throw new HostSetupException("SSH host setup requires Windows 10 build 1809 or later, or a Windows member server. Domain controllers are not supported.");
+        if ((protocol == "RDP" && (!machine.PolicyAllowsRdp || !machine.PolicyAllowsNla)) || !machine.PolicyAllowsFirewall)
+            throw new HostSetupException("An organisation policy prevents configuring this host and its local-subnet firewall rules. Contact your administrator.");
+        if ((protocol == "RDP" && machine.RdpPort is < 1 or > 65535) || string.IsNullOrWhiteSpace(machine.MachineName))
             throw new HostSetupException("The computer's Remote Desktop settings are invalid.");
         return machine;
     }

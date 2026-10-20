@@ -26,6 +26,20 @@ internal sealed record LocalSubnet(IPAddress Address, IPAddress Mask, int Interf
 
 internal static class NetworkScope
 {
+    // GUID return values cannot be marshalled through dynamic IDispatch. Keep
+    // the native INetworkConnection vtable order when querying adapter IDs.
+    [ComImport, Guid("DCB00005-570F-4A9B-8D69-199FDBA5723B"), InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    private interface INetworkConnection
+    {
+        void GetNetwork([MarshalAs(UnmanagedType.Interface)] out object network);
+        void GetIsConnectedToInternet([MarshalAs(UnmanagedType.VariantBool)] out bool connected);
+        void GetIsConnected([MarshalAs(UnmanagedType.VariantBool)] out bool connected);
+        void GetConnectivity(out int connectivity);
+        void GetConnectionId(out Guid connectionId);
+        void GetAdapterId(out Guid adapterId);
+        void GetDomainType(out int domainType);
+    }
+
     internal sealed record NetworkCategoryReport(bool Succeeded, int ConnectedNetworks, int PrivateNetworks,
         int DomainNetworks, HashSet<Guid> PrivateAdapters);
     public static bool IsPrivateAddress(IPAddress address)
@@ -94,8 +108,8 @@ internal static class NetworkScope
                             {
                                 try
                                 {
-                                    dynamic connection = connectionObject;
-                                    result.Add((Guid)connection.GetAdapterId());
+                                    ((INetworkConnection)connectionObject).GetAdapterId(out Guid adapterId);
+                                    result.Add(adapterId);
                                 }
                                 finally { Release(connectionObject); }
                             }
@@ -108,7 +122,7 @@ internal static class NetworkScope
             finally { Release(networksObject); }
             succeeded = true;
         }
-        catch (Exception ex) when (ex is COMException or InvalidCastException or
+        catch (Exception ex) when (ex is COMException or InvalidCastException or ArgumentException or
                                   Microsoft.CSharp.RuntimeBinder.RuntimeBinderException or UnauthorizedAccessException)
         {
             result.Clear();

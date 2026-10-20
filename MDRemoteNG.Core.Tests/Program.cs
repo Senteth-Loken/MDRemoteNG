@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using MDRemoteNG.Core;
 
 int passed = 0;
@@ -52,6 +53,70 @@ File.WriteAllBytes(store.Path, protectedData);
 try { store.Load(); throw new Exception("Corrupt profile accepted"); }
 catch (CryptographicException) { Check(true, "Corrupt protected profile fails closed"); }
 
+void RejectEndpoints(Action action, string description)
+{
+    bool rejected = false;
+    try { action(); }
+    catch (InvalidDataException) { rejected = true; }
+    Check(rejected, description);
+}
+
+string sshPin = "SHA256:" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=');
+SharedConnection SshEndpoint(string password = "ssh-test-password") => new()
+{
+    Protocol = "SSH", Port = 22, Username = "test-user", Password = password, SshHostKeyFingerprints = [sshPin]
+};
+SharedConnection VncEndpoint() => new()
+{
+    Protocol = "VNC", Port = 5900, Password = "vnc-test-password", CertificateFingerprint = new string('A', 64)
+};
+var legacy = JsonSerializer.Deserialize<RemotePeer>("{\"InstanceId\":\"87ab6e7b-bfab-4a79-b1ce-a2be9ea80323\",\"DisplayName\":\"Legacy peer\",\"SharedConnection\":{\"Protocol\":\"SSH\",\"Port\":22,\"Username\":\"legacy\",\"Password\":\"test\"}}")!;
+Check(legacy.SharedConnections.Count == 0 && SharedConnectionSet.GetConnections(legacy.SharedConnection, legacy.SharedConnections).Single().Username == "legacy",
+    "Legacy primary-only peer data still exposes its original connection.");
+var multiStore = new ProfileStore(Path.Combine(testDirectory, "multi-profile.dat"));
+Profile multi = multiStore.Create("Test!");
+var rdp = new SharedConnection { Username = "test-user", Password = "rdp-test-password" };
+SharedConnectionSet.Upsert(multi, rdp);
+SharedConnectionSet.Upsert(multi, SshEndpoint());
+SharedConnectionSet.Upsert(multi, VncEndpoint());
+multi.VncHost = new VncHostSettings { CertificatePfx = Enumerable.Repeat((byte)0x42, 120).ToArray() };
+multi = multiStore.UpdateProfile(multi);
+Profile loadedMulti = multiStore.Load();
+Check(loadedMulti.SharedConnections.Select(connection => connection.Protocol).SequenceEqual(["RDP", "SSH", "VNC"]) &&
+      loadedMulti.SharedConnection?.Protocol == "VNC" && loadedMulti.VncHost?.CertificatePfx.Length == 120,
+    "All three endpoints and private VNC settings persist under the existing protected profile.");
+Check(loadedMulti.SharedConnections[1].SshHostKeyFingerprints.Single() == sshPin && loadedMulti.SharedConnections[2].CertificateFingerprint == new string('A', 64),
+    "SSH host-key pins and the VNC certificate pin survive profile storage.");
+Check(SharedConnectionSet.GetLegacyPrimary(loadedMulti.SharedConnection, loadedMulti.SharedConnections)?.Protocol == "RDP",
+    "Legacy peers receive RDP before SSH when the selected endpoint is encrypted VNC.");
+var onlyTlsVnc = VncEndpoint();
+Check(SharedConnectionSet.GetLegacyPrimary(onlyTlsVnc, [onlyTlsVnc]) == null && SharedConnectionSet.GetConnections(null, [onlyTlsVnc]).Single() == onlyTlsVnc,
+    "A TLS-only VNC host omits the legacy endpoint while remaining available to modern peers.");
+SharedConnectionSet.Upsert(loadedMulti, SshEndpoint("replacement-ssh-password"));
+Check(loadedMulti.SharedConnections.Count == 3 && loadedMulti.SharedConnections.Single(connection => connection.Protocol == "SSH").Password == "replacement-ssh-password" &&
+      loadedMulti.SharedConnections.Single(connection => connection.Protocol == "RDP").Password == rdp.Password && loadedMulti.SharedConnection?.Protocol == "SSH",
+    "Replacing one protocol preserves other endpoints and updates the legacy primary.");
+SharedConnectionSet.Remove(loadedMulti, "SSH");
+Check(loadedMulti.SharedConnections.Count == 2 && loadedMulti.SharedConnection?.Protocol == "RDP",
+    "Removing the selected protocol preserves other endpoints and chooses a remaining primary.");
+SharedConnectionSet.Clear(loadedMulti);
+multiStore.UpdateProfile(loadedMulti);
+Check(multiStore.Load().SharedConnection == null && multiStore.Load().SharedConnections.Count == 0,
+    "Stopping all sharing clears both modern and legacy endpoint fields.");
+RejectEndpoints(() => SharedConnectionSet.Validate(rdp, [rdp, rdp]), "Duplicate shared protocols are rejected.");
+RejectEndpoints(() => SharedConnectionSet.Validate(rdp, [rdp, SshEndpoint(), VncEndpoint(), rdp]), "A peer cannot supply more than three endpoints.");
+RejectEndpoints(() => SharedConnectionSet.Validate(rdp, [SshEndpoint()]), "A conflicting legacy primary cannot override the endpoint list.");
+RejectEndpoints(() => SharedConnectionSet.Validate(rdp, null), "An explicitly null endpoint list is rejected.");
+RejectEndpoints(() => SharedConnectionSet.Validate(rdp, [rdp, null!]), "Null endpoints are rejected before storage or disclosure.");
+RejectEndpoints(() => new SharedConnection { Protocol = "SSH", SshHostKeyFingerprints = ["SHA256:bad\" -hostkey *"] }.Validate(),
+    "SSH fingerprints cannot inject extra client arguments.");
+RejectEndpoints(() => new SharedConnection { Protocol = "RDP", SshHostKeyFingerprints = [sshPin] }.Validate(), "SSH pins are rejected on other protocols.");
+RejectEndpoints(() => new SharedConnection { Protocol = "VNC", CertificateFingerprint = new string('Z', 64) }.Validate(), "VNC certificate pins must contain exactly a SHA256 hex digest.");
+RejectEndpoints(() => new SharedConnection { Protocol = "SSH", CertificateFingerprint = new string('A', 64) }.Validate(), "VNC pins are rejected on other protocols.");
+var oversized = new SharedConnection { Protocol = "RDP", Username = new string('é', 256), Domain = new string('é', 256), Password = new string('é', 1024) };
+RejectEndpoints(() => SharedConnectionSet.Validate(oversized, [oversized, SshEndpoint(), VncEndpoint()]),
+    "The total encoded endpoint payload stays within the original peer frame budget.");
+
 Profile Peer(string pin) => new()
 {
     NormalizedPin = PinPolicy.Normalize(pin),
@@ -60,7 +125,7 @@ Profile Peer(string pin) => new()
 };
 
 async Task<(RemotePeer? Client, RemotePeer? Server, Exception? Error, byte[] ServerBytes, byte[] ClientBytes)> Exchange(
-    string clientPin, string serverPin, bool tamper = false, bool revoke = false)
+    string clientPin, string serverPin, bool tamper = false, bool revoke = false, bool multiple = false)
 {
     var listener = new TcpListener(IPAddress.Loopback, 0);
     listener.Start();
@@ -72,8 +137,16 @@ async Task<(RemotePeer? Client, RemotePeer? Server, Exception? Error, byte[] Ser
     listener.Stop();
     using var serverStream = new RecordingStream(server.GetStream(), tamper);
     using var clientStream = new RecordingStream(client.GetStream());
-    var serverTask = PeerHandshake.ExchangeAsync(serverStream, Peer(serverPin), true, ct.Token, () => !revoke);
-    var clientTask = PeerHandshake.ExchangeAsync(clientStream, Peer(clientPin), false, ct.Token);
+    Profile serverProfile = Peer(serverPin), clientProfile = Peer(clientPin);
+    if (multiple)
+        foreach (Profile local in new[] { serverProfile, clientProfile })
+        {
+            SharedConnectionSet.Upsert(local, SshEndpoint());
+            SharedConnectionSet.Upsert(local, VncEndpoint());
+            local.VncHost = new VncHostSettings { CertificatePfx = Enumerable.Repeat((byte)0x42, 120).ToArray() };
+        }
+    var serverTask = PeerHandshake.ExchangeAsync(serverStream, serverProfile, true, ct.Token, () => !revoke);
+    var clientTask = PeerHandshake.ExchangeAsync(clientStream, clientProfile, false, ct.Token);
     // Failure must close the transport, as the real helper does, so the peer cannot wait forever.
     var completed = await Task.WhenAny(clientTask, serverTask);
     if (completed.IsFaulted) { client.Close(); server.Close(); }
@@ -91,6 +164,20 @@ Check(match.Error == null && match.Client?.SharedConnection?.Password == "unique
 string wire = Encoding.UTF8.GetString(match.ServerBytes) + Encoding.UTF8.GetString(match.ClientBytes);
 Check(!wire.Contains("unique-test-password") && !wire.Contains("test-user") && !wire.Contains("PIN#"),
     "Neither PINs nor credentials appear in captured network traffic");
+var multiMatch = await Exchange("pin#", "PIN#", multiple: true);
+Check(multiMatch.Error == null && multiMatch.Client?.SharedConnections.Count == 3 && multiMatch.Server?.SharedConnections.Count == 3 &&
+      multiMatch.Client.SharedConnections.Single(connection => connection.Protocol == "SSH").SshHostKeyFingerprints.Single() == sshPin &&
+      multiMatch.Server.SharedConnections.Single(connection => connection.Protocol == "VNC").CertificateFingerprint == new string('A', 64),
+    "Matching PINs exchange all three endpoint credentials and authenticated host pins.");
+string publicPeer = JsonSerializer.Serialize(multiMatch.Client);
+Check(JsonSerializer.Deserialize<LegacyPeerSnapshot>(publicPeer)?.SharedConnection?.Protocol == "RDP" &&
+      multiMatch.Client!.SharedConnection?.Protocol == "RDP",
+    "An older peer can ignore the new endpoint list and use the compatible primary from the same payload.");
+Check(!publicPeer.Contains("VncHost") && !publicPeer.Contains("CertificatePfx") && !publicPeer.Contains(Convert.ToBase64String(Enumerable.Repeat((byte)0x42, 120).ToArray())),
+    "Private VNC certificate material is absent from peer payloads.");
+string multiWire = Encoding.UTF8.GetString(multiMatch.ServerBytes) + Encoding.UTF8.GetString(multiMatch.ClientBytes);
+Check(!multiWire.Contains("ssh-test-password") && !multiWire.Contains("vnc-test-password") && !multiWire.Contains(sshPin),
+    "All endpoint passwords and host pins remain encrypted in recorded discovery traffic.");
 var mismatch = await Exchange("bad#", "PIN#");
 Check(mismatch.Error != null && mismatch.Client == null && mismatch.Server == null,
     "Mismatched PINs fail before either peer releases credentials");
@@ -124,6 +211,13 @@ using (var replay = new ReplayStream(match.ServerBytes))
     catch (AuthenticationException) { Check(true, "Replayed handshake transcript fails authentication"); }
 }
 Console.WriteLine($"All {passed} core checks passed.");
+
+sealed class LegacyPeerSnapshot
+{
+    public Guid InstanceId { get; set; }
+    public string DisplayName { get; set; } = "";
+    public SharedConnection? SharedConnection { get; set; }
+}
 
 sealed class RecordingStream(Stream inner, bool tamperThirdFrame = false) : Stream
 {

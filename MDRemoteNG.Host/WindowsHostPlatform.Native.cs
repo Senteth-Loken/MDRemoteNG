@@ -42,6 +42,7 @@ public sealed partial class WindowsHostPlatform
     [DllImport("Netapi32.dll")] private static extern uint NetApiBufferFree(IntPtr buffer);
     [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern uint NetUserGetLocalGroups(string? server, string username, uint level, uint flags, out IntPtr buffer, uint preferredLength, out uint count, out uint total);
     [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern uint NetLocalGroupAddMembers(string? server, string group, uint level, ref LocalGroupMember members, uint count);
+    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern uint NetLocalGroupGetInfo(string? server, string group, uint level, out IntPtr buffer);
     [DllImport("Netapi32.dll", EntryPoint = "NetLocalGroupAddMembers", CharSet = CharSet.Unicode)] private static extern uint NetLocalGroupAddSidMember(string? server, string group, uint level, ref LocalGroupSidMember members, uint count);
     [DllImport("advapi32.dll", EntryPoint = "LogonUserW", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool LogonUser(string username, string? domain, string password, int logonType, int provider, out SafeAccessTokenHandle token);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr OpenSCManager(string? machine, string? database, uint access);

@@ -63,6 +63,8 @@ public sealed class ProfileStore
         profile.DiscoveryEnabled = edited.DiscoveryEnabled;
         profile.AutoConnect = edited.AutoConnect;
         profile.SharedConnection = edited.SharedConnection;
+        profile.SharedConnections = edited.SharedConnections;
+        profile.VncHost = edited.VncHost;
         if (normalized != null) SetPin(profile, normalized);
         SaveCore(profile);
         return profile;
@@ -139,7 +141,8 @@ public sealed class ProfileStore
             !PinPolicy.Validate(profile.NormalizedPin) || profile.NormalizedPin != PinPolicy.Normalize(profile.NormalizedPin) ||
             profile.PinSalt is not { Length: 32 } || profile.PinVerifier is not { Length: 32 } || profile.FailedAttempts < 0)
             throw new InvalidDataException("Invalid MDRemoteNG profile.");
-        profile.SharedConnection?.Validate();
+        SharedConnectionSet.Validate(profile.SharedConnection, profile.SharedConnections);
+        profile.VncHost?.Validate();
     }
 
     private FileStream Lock()

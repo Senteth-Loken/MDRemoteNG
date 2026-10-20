@@ -41,7 +41,16 @@ public static class PeerHandshake
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(profile);
-        profile.SharedConnection?.Validate();
+        SharedConnectionSet.Validate(profile.SharedConnection, profile.SharedConnections);
+        var local = new RemotePeer
+        {
+            InstanceId = profile.InstanceId,
+            DisplayName = profile.DisplayName,
+            SharedConnection = SharedConnectionSet.GetLegacyPrimary(profile.SharedConnection, profile.SharedConnections),
+            SharedConnections = profile.SharedConnections.Count > 0 ? profile.SharedConnections :
+                profile.SharedConnection?.CertificateFingerprint.Length > 0 ? [profile.SharedConnection] : []
+        };
+        SharedConnectionSet.Validate(local.SharedConnection, local.SharedConnections);
         byte[] password = Encoding.UTF8.GetBytes(PinPolicy.Normalize(profile.NormalizedPin));
         byte[]? key = null;
         try
@@ -49,12 +58,6 @@ public static class PeerHandshake
             key = isServer
                 ? await AuthenticateServerAsync(stream, password, cancellationToken).ConfigureAwait(false)
                 : await AuthenticateClientAsync(stream, password, cancellationToken).ConfigureAwait(false);
-            var local = new RemotePeer
-            {
-                InstanceId = profile.InstanceId,
-                DisplayName = profile.DisplayName,
-                SharedConnection = profile.SharedConnection
-            };
             RemotePeer remote;
             if (isServer)
             {
@@ -70,7 +73,7 @@ public static class PeerHandshake
             }
             if (remote.InstanceId == Guid.Empty || remote.InstanceId == profile.InstanceId || remote.DisplayName is null || remote.DisplayName.Length > 128)
                 throw new AuthenticationException("Invalid peer identity.");
-            remote.SharedConnection?.Validate();
+            SharedConnectionSet.Validate(remote.SharedConnection, remote.SharedConnections);
             return remote;
         }
         catch (Org.BouncyCastle.Crypto.CryptoException ex)

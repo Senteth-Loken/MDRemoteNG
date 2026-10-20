@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using MDRemoteNG.Core;
 using MDRemoteNG.Host;
 using mRemoteNG.App;
@@ -37,6 +39,7 @@ internal static class Program
             CheckStartupAndSettings(Path.Combine(directory, "profile.dat"));
             CheckHostConfiguration(Path.Combine(directory, "host-profile.dat"));
             CheckWindowsAccountConfiguration(Path.Combine(directory, "account-profile.dat"));
+            CheckMultipleHostProtocols(Path.Combine(directory, "protocol-profile.dat"));
             CheckCancelledStartup();
             Console.WriteLine($"All {_passed} isolated startup and dialog checks passed. No windows were displayed.");
             return 0;
@@ -417,6 +420,166 @@ internal static class Program
         Protocol = "RDP", Port = 3391, Username = "mdrng_test", Domain = Environment.MachineName,
         Password = "generated-test-password!23", StatusMessage = "Use a Private or Domain network for discovery."
     };
+
+    private static void CheckMultipleHostProtocols(string path)
+    {
+        var store = new ProfileStore(path);
+        Profile profile = store.Create("UI#1");
+        SharedConnectionSet.Upsert(profile, new SharedConnection
+        {
+            Protocol = "RDP", Port = 3390, Username = "rdp-test-user", Domain = "TEST-PC", Password = "rdp-test-only-password"
+        });
+        store.Save(profile);
+        string setupProtocol = null;
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHost: protocol =>
+        {
+            setupProtocol = protocol;
+            return Task.FromResult(SshResult());
+        }))
+        {
+            Field<ComboBox>(settings, "_protocol").SelectedItem = "SSH";
+            Check(!Field<CheckBox>(settings, "_share").Checked && Field<ComboBox>(settings, "_protocol").Enabled &&
+                Field<NumericUpDown>(settings, "_port").Value == 22 &&
+                Field<TextBox>(settings, "_password").Text.Length == 0 &&
+                Field<TextBox>(settings, "_domain").Text.Length == 0 &&
+                Field<Button>(settings, "_configureCurrentAccountButton").Enabled,
+                "SSH can be selected before sharing with clean protocol defaults and no inherited RDP password.");
+            CompleteUiTask(InvokeHostSetup(settings));
+            Profile saved = store.Load();
+            Check(setupProtocol == "SSH" && saved.SharedConnections.Count == 2 &&
+                saved.SharedConnection.Protocol == "SSH" && saved.SharedConnection.SshHostKeyFingerprints.SequenceEqual(SshResult().SshHostKeyFingerprints) &&
+                saved.SharedConnections.Single(connection => connection.Protocol == "RDP").Port == 3390,
+                "SSH setup dispatches the chosen protocol and saves its host-key pins while retaining RDP sharing.");
+            Field<ComboBox>(settings, "_protocol").SelectedItem = "RDP";
+            Check(Field<NumericUpDown>(settings, "_port").Value == 3390 &&
+                Field<TextBox>(settings, "_username").Text == "rdp-test-user" &&
+                Field<TextBox>(settings, "_password").Text == "rdp-test-only-password" &&
+                Field<CheckBox>(settings, "_share").Checked,
+                "Switching protocols restores each previously configured endpoint rather than copying other credentials.");
+        }
+
+        const string currentPassword = "existing-ssh-test-password!23";
+        string requestedProtocol = null;
+        string requestedPassword = null;
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load(),
+            configureProtocolCurrentAccount: (protocol, password) =>
+            {
+                requestedProtocol = protocol;
+                requestedPassword = password;
+                HostConfigurationResult result = SshResult();
+                result.Username = "existing-ssh-user";
+                result.Password = password;
+                return Task.FromResult(result);
+            }, requestCurrentAccountPassword: _ => currentPassword))
+        {
+            CompleteUiTask(InvokeCurrentAccountSetup(settings));
+            Check(requestedProtocol == "SSH" && requestedPassword == currentPassword &&
+                store.Load().SharedConnections.Count == 2 &&
+                store.Load().SharedConnection.Username == "existing-ssh-user",
+                "Current-account SSH setup receives the selected protocol and explicit Windows password without removing RDP.");
+        }
+
+        HostConfigurationResult vncResult = VncResult();
+        int windowsPasswordPrompts = 0;
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHost: protocol =>
+        {
+            setupProtocol = protocol;
+            return Task.FromResult(vncResult);
+        }, requestCurrentAccountPassword: _ => { windowsPasswordPrompts++; return currentPassword; }))
+        {
+            Field<ComboBox>(settings, "_protocol").SelectedItem = "VNC";
+            CompleteUiTask(InvokeCurrentAccountSetup(settings));
+            Check(windowsPasswordPrompts == 0 && !Field<Button>(settings, "_configureCurrentAccountButton").Enabled &&
+                Field<Button>(settings, "_configureHostButton").Text == "Configure VNC desktop sharing" &&
+                Field<TextBox>(settings, "_username").Text.Length == 0 &&
+                Field<Label>(settings, "_currentAccountDescription").Text.Contains("existing desktop", StringComparison.Ordinal),
+                "VNC uses its generated desktop-sharing credentials and cannot prompt for a Windows password.");
+            CompleteUiTask(InvokeHostSetup(settings));
+            Profile saved = store.Load();
+            Check(setupProtocol == "VNC" && saved.SharedConnections.Count == 3 && saved.SharedConnection.Protocol == "VNC" &&
+                saved.SharedConnection.Username.Length == 0 && saved.SharedConnection.Password == "Vnc7!2$X" &&
+                saved.SharedConnection.CertificateFingerprint == vncResult.CertificateFingerprint &&
+                saved.VncHost.CertificatePfx.SequenceEqual(vncResult.VncCertificatePfx),
+                "VNC setup saves its pinned TLS endpoint and private certificate while retaining both RDP and SSH.");
+            Check(!Field<TextBox>(settings, "_username").Enabled && !Field<TextBox>(settings, "_domain").Enabled &&
+                Field<TextBox>(settings, "_password").UseSystemPasswordChar &&
+                Field<Label>(settings, "_sharedSummary").Text.Contains("RDP, SSH, VNC", StringComparison.Ordinal),
+                "VNC hides unsupported Windows-account fields and the sharing summary lists every selected protocol.");
+            SetText(settings, "_password", "Vnc8#3$Y");
+            InvokeAction(settings, "OnSave");
+            saved = store.Load();
+            Check(saved.SharedConnections.Count == 3 && saved.SharedConnection.Password == "Vnc8#3$Y" &&
+                saved.SharedConnection.CertificateFingerprint == vncResult.CertificateFingerprint && saved.VncHost != null,
+                "Manual VNC field edits preserve its certificate pin, private TLS material and other protocol endpoints.");
+        }
+
+        using (var invalid = new MDNetworkSettingsDialog(store, store.Load(), configureProtocolHost: _ =>
+        {
+            HostConfigurationResult result = VncResult();
+            result.CertificateFingerprint = new string('A', 64);
+            return Task.FromResult(result);
+        }))
+        {
+            CompleteUiTask(InvokeHostSetup(invalid));
+            Check(Field<TextBox>(invalid, "_password").Text == "Vnc8#3$Y" &&
+                store.Load().SharedConnection.CertificateFingerprint == vncResult.CertificateFingerprint &&
+                Field<Label>(invalid, "_error").Text.Length > 0,
+                "A VNC certificate that does not match its private key is rejected before fields or profiles change.");
+        }
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load()))
+        {
+            Field<ComboBox>(settings, "_protocol").SelectedItem = "SSH";
+            Field<CheckBox>(settings, "_share").Checked = false;
+            InvokeAction(settings, "OnSave");
+            Profile saved = store.Load();
+            Check(saved.SharedConnections.Count == 2 && saved.SharedConnections.All(connection => connection.Protocol != "SSH") &&
+                saved.SharedConnections.Any(connection => connection.Protocol == "RDP") && saved.VncHost != null,
+                "Unsharing the selected SSH protocol preserves the RDP endpoint and encrypted VNC host.");
+        }
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load()))
+        {
+            Field<ComboBox>(settings, "_protocol").SelectedItem = "VNC";
+            Field<CheckBox>(settings, "_share").Checked = false;
+            InvokeAction(settings, "OnSave");
+            Profile saved = store.Load();
+            Check(saved.SharedConnections.Count == 1 && saved.SharedConnection.Protocol == "RDP" && saved.VncHost == null,
+                "Unsharing VNC removes its private host material and keeps the other shared protocol.");
+        }
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load()))
+        {
+            InvokeAction(settings, "OnStopSharing");
+            Check(!Field<CheckBox>(settings, "_share").Checked && store.Load().SharedConnection != null &&
+                Field<Label>(settings, "_hostStatus").Text.Contains("click Save", StringComparison.Ordinal),
+                "Stop sharing all is reviewable before Save and Cancel leaves saved endpoints intact.");
+        }
+        using (var settings = new MDNetworkSettingsDialog(store, store.Load()))
+        {
+            InvokeAction(settings, "OnStopSharing");
+            InvokeAction(settings, "OnSave");
+            Profile saved = store.Load();
+            Check(saved.SharedConnection == null && saved.SharedConnections.Count == 0 && saved.VncHost == null,
+                "Saving Stop sharing all clears legacy and multiple endpoints together.");
+        }
+    }
+
+    private static HostConfigurationResult SshResult() => new()
+    {
+        Protocol = "SSH", Port = 2222, Username = "ssh-test-user", Domain = "", Password = "ssh-test-only-password!23",
+        SshHostKeyFingerprints = ["SHA256:" + Convert.ToBase64String(new byte[32]).TrimEnd('=')]
+    };
+
+    private static HostConfigurationResult VncResult()
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=MDRemoteNG UI test", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        return new HostConfigurationResult
+        {
+            Protocol = "VNC", Port = 5901, Username = "", Domain = "", Password = "Vnc7!2$X",
+            CertificateFingerprint = certificate.GetCertHashString(HashAlgorithmName.SHA256),
+            VncCertificatePfx = certificate.Export(X509ContentType.Pfx)
+        };
+    }
 
     private static Task InvokeHostSetup(Form dialog)
     {

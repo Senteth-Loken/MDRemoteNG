@@ -62,7 +62,7 @@ internal sealed class PeerDiscoveryHost : IAsyncDisposable
         byte[] serialized = JsonSerializer.SerializeToUtf8Bytes(new
         {
             profile.InstanceId, profile.DisplayName, profile.NormalizedPin,
-            profile.DiscoveryEnabled, profile.SharedConnection
+            profile.DiscoveryEnabled, profile.SharedConnection, profile.SharedConnections, profile.VncHost
         });
         try { return Convert.ToHexString(SHA256.HashData(serialized)); }
         finally { CryptographicOperations.ZeroMemory(serialized); }
@@ -181,7 +181,7 @@ internal sealed class PeerDiscoveryHost : IAsyncDisposable
                 CurrentProfileMatchesProtectedStore).ConfigureAwait(false);
             if (peer.InstanceId == Guid.Empty || peer.InstanceId == _profile.InstanceId ||
                 (advertisedId.HasValue && peer.InstanceId != advertisedId.Value) ||
-                peer.DisplayName is null || peer.DisplayName.Length > 128 || !ValidConnection(peer.SharedConnection) ||
+                peer.DisplayName is null || peer.DisplayName.Length > 128 ||
                 timeout.IsCancellationRequested || !CurrentProfileMatchesProtectedStore())
                 return false;
             if (_peers.Count >= 128 && !_peers.ContainsKey(peer.InstanceId)) return false;
@@ -191,16 +191,12 @@ internal sealed class PeerDiscoveryHost : IAsyncDisposable
                 DisplayName = peer.DisplayName,
                 Address = source.ToString(),
                 SharedConnection = peer.SharedConnection,
+                SharedConnections = peer.SharedConnections,
                 LastSeenUtc = DateTimeOffset.UtcNow
             };
             return true;
         }
     }
-
-    private static bool ValidConnection(SharedConnection? connection) => connection is null ||
-        (connection.Protocol is "RDP" or "SSH" or "VNC" && connection.Port is >= 1 and <= 65535 &&
-         connection.Username is not null && connection.Domain is not null && connection.Password is not null &&
-         connection.Username.Length <= 256 && connection.Domain.Length <= 256 && connection.Password.Length <= 1024);
 
     private bool CurrentProfileMatchesProtectedStore()
     {
