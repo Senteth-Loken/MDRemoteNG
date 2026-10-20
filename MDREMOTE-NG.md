@@ -60,8 +60,18 @@ Focused regression checks run without the main application's COM dependency:
 dotnet run --project MDRemoteNG.Core.Tests -c Release
 dotnet run --project MDRemoteNG.Discovery.Tests -c Release
 dotnet run --project MDRemoteNG.UI.Tests -c Release
+dotnet run --project MDRemoteNG.Defaults.Tests -c Release
+```
+
+After building the self-contained application, these checks exercise its actual panel and connection-file code in memory without changing your connection files:
+
+```powershell
+dotnet run --project MDRemoteNG.App.Tests -c Release
+dotnet run --project MDRemoteNG.Connection.Tests -c Release
 ```
 
 The tests use temporary workspace profiles and test credentials, never your live profile. They cover PIN policy, DPAPI corruption, lockout persistence, atomic PIN/settings changes, matching/mismatching peers, encrypted traffic, message tampering/replay, network scope, rate limits, framing and PIN/settings UI behavior. Two-machine firewall, discovery and actual RDP/SSH/VNC sessions should also be verified in the intended network environment.
 
-On 20 October 2026, the x64 desktop build and full self-contained publish succeeded, and all 43 focused checks passed. Required desktop/helper/runtime/language files were verified. The MSI compiled and its payload and separate product identity were checked by decompilation with ICE validation suppressed locally; full Windows Installer Service validation remains to be run on a packaging machine. The broader upstream test project has existing compilation errors and is not included in the passing count. ARM64 and two-machine remote sessions have not been exercised here.
+On 20 October 2026, the x64 desktop build and full self-contained publish succeeded, and all 81 focused checks passed. The startup checks create and dispose a native PIN-window handle before creating the next window, covering the post-PIN initialization failure. They also check separate instance locks, panel registration/reuse, legacy default settings, and production XML round trips of current 2.9 and legacy 2.8 formats with encrypted credentials. Required desktop/helper/runtime/language files were verified. The MSI compiled and its payload and separate product identity were checked by decompilation with ICE validation suppressed locally; full Windows Installer Service validation remains to be run on a packaging machine. The broader upstream test project has existing compilation errors and is not included in the passing count. ARM64 and two-machine remote sessions have not been exercised here.
+
+Startup failures now display an error without constructing the main window before unlock. Details are recorded in `%LOCALAPPDATA%\MDRemoteNG\startup-error.log`.

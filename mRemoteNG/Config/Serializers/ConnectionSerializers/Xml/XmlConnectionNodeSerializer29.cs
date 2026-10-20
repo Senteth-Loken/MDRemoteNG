@@ -14,7 +14,10 @@ namespace mRemoteNG.Config.Serializers.ConnectionSerializers.Xml
                                          SaveFilter saveFilter)
         : XmlConnectionNodeSerializer28(cryptographyProvider, encryptionKey, saveFilter)
     {
-        public override Version Version { get; } = new Version(2, 9);
+        // Keep the XML reader's supported ceiling aligned with the current XML writer.
+        // ConnectionsFileInfo.ConnectionFileVersion tracks the separate SQL format.
+        public static Version CurrentVersion { get; } = new Version(2, 9);
+        public override Version Version => CurrentVersion;
 
         protected override void SetElementAttributes(XContainer element, ConnectionInfo connectionInfo)
         {

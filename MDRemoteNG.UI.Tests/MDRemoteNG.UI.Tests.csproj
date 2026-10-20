@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
+    <Compile Include="..\mRemoteNG\App\WindowsFormsStartup.cs" Link="App\WindowsFormsStartup.cs" />
     <Compile Include="..\mRemoteNG\UI\Forms\MDPinDialog.cs" Link="UI\MDPinDialog.cs" />
     <Compile Include="..\mRemoteNG\UI\Forms\MDNetworkSettingsDialog.cs" Link="UI\MDNetworkSettingsDialog.cs" />
   </ItemGroup>

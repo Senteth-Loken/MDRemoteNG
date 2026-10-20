@@ -1,5 +1,7 @@
 using System.Reflection;
+using System.Diagnostics;
 using MDRemoteNG.Core;
+using mRemoteNG.App;
 using mRemoteNG.UI.Forms;
 
 namespace MDRemoteNG.UI.Tests;
@@ -13,7 +15,7 @@ internal static class Program
     private static int _passed;
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] arguments)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -21,16 +23,19 @@ internal static class Program
             return 1;
         }
 
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
+        if (arguments.SequenceEqual(new[] { "--cancel-startup" }))
+            return WindowsFormsStartup.InitializeAndUnlock(() => false, (_, _) => { }, (_, _) => { }) ? 1 : 0;
+
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "ui-test-data"));
         string directory = Path.Combine(root, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
+            CheckStartupWindowTransition();
+            CheckSingleInstanceIdentity();
             CheckStartupAndSettings(Path.Combine(directory, "profile.dat"));
-            Console.WriteLine($"All {_passed} isolated dialog checks passed. No windows were displayed.");
+            CheckCancelledStartup();
+            Console.WriteLine($"All {_passed} isolated startup and dialog checks passed. No windows were displayed.");
             return 0;
         }
         catch (Exception ex)
@@ -45,6 +50,60 @@ internal static class Program
             if (resolved.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 Directory.Delete(resolved, recursive: true);
         }
+    }
+
+    private static void CheckStartupWindowTransition()
+    {
+        bool unlocked = WindowsFormsStartup.InitializeAndUnlock(() =>
+        {
+            // A real PIN dialog creates native controls even after it is closed.
+            // Exercise that lifecycle without showing a dialog or using a live PIN.
+            using var pinWindow = new Form { ShowInTaskbar = false };
+            Check(pinWindow.Handle != IntPtr.Zero,
+                "The unlock callback can create its native window after WinForms initialization.");
+            return true;
+        }, (_, _) => { }, (_, _) => { });
+        Check(unlocked, "Successful PIN unlock continues the startup gate.");
+        using var mainWindow = new Form { ShowInTaskbar = false };
+        Check(mainWindow.Handle != IntPtr.Zero,
+            "The main window can be created after the PIN window has closed.");
+    }
+
+    private static void CheckSingleInstanceIdentity()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "instance-probe");
+        string key = WindowsFormsStartup.SingleInstanceMutexName(path);
+        Check(key.StartsWith(@"Local\MDRemoteNG.SingleInstance.", StringComparison.Ordinal),
+            "MDRemoteNG has its own instance lock rather than sharing the upstream lock.");
+        Check(key == WindowsFormsStartup.SingleInstanceMutexName(path.ToUpperInvariant() + Path.DirectorySeparatorChar),
+            "Equivalent Windows installation paths share one instance lock.");
+        Check(key != WindowsFormsStartup.SingleInstanceMutexName(path + "-other"),
+            "Another MDRemoteNG installation cannot silently suppress this installation's window.");
+    }
+
+    private static void CheckCancelledStartup()
+    {
+        // WinForms initialization must run before this process has created controls.
+        // A fresh process exercises the cancellation branch with the same production helper.
+        string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process executable unavailable.");
+        var start = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        if (string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+        start.ArgumentList.Add("--cancel-startup");
+        using var child = Process.Start(start) ?? throw new InvalidOperationException("Unable to start cancellation check.");
+        if (!child.WaitForExit(15000))
+        {
+            child.Kill(entireProcessTree: true);
+            throw new InvalidOperationException("The cancelled startup did not exit.");
+        }
+        Check(child.ExitCode == 0, "Cancelled PIN unlock stops startup without creating the main window.");
     }
 
     private static void CheckStartupAndSettings(string path)

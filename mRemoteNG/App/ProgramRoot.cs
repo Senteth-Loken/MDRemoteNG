@@ -17,6 +17,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Globalization;
+using System.Linq;
 
 
 
@@ -36,25 +37,26 @@ namespace mRemoteNG.App
         [STAThread]
         public static void Main(string[] args)
         {
-            // Must be called before any other WinForms / Application.* usage so that
-            // per-monitor font scaling and hit-testing are initialised correctly from
-            // the very first UI operation (dialogs shown in MainAsync, exception
-            // handlers, EnableVisualStyles, …).  The app manifest already declares
-            // PerMonitorV2 awareness; this call keeps the WinForms runtime in sync.
-            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            // Every interactive launch must unlock before settings, connection files,
-            // command-line targets or an existing instance can be accessed.
-            if (!MDRemoteNgSession.Unlock())
-                return;
+            try
+            {
+                // Exception mode must be set before even the PIN dialog creates controls.
+                // Every launch still unlocks before connection data or another instance.
+                if (!WindowsFormsStartup.InitializeAndUnlock(MDRemoteNgSession.Unlock,
+                        ApplicationOnThreadException, CurrentDomainOnUnhandledException))
+                    return;
 
-            InitializeSqliteProvider();
+                InitializeSqliteProvider();
 
-            // Ensure the real entry point is definitely STA
-            MainAsync(args).GetAwaiter().GetResult();
+                // Keep startup and the main message loop on the entry-point STA thread.
+                MainAsync(args).GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                CloseSplash();
+                ShowStartupFailure(exception);
+                Environment.ExitCode = 1;
+            }
         }
 
         private static Task MainAsync(string[] args)
@@ -256,8 +258,6 @@ namespace mRemoteNG.App
 
         private static void StartApplication()
         {
-            CatchAllUnhandledExceptions();
-
             // Match the OS dark mode for common controls (scrollbars, context menus, ...)
             // to the active theme. Applied once at startup; theme changes require a restart.
             // Read the persisted flag instead of constructing ThemeManager here, so we avoid
@@ -279,7 +279,7 @@ namespace mRemoteNG.App
 
         private static void StartApplicationAsSingleInstance()
         {
-            const string mutexID = "mRemoteNG_SingleInstanceMutex";
+            string mutexID = WindowsFormsStartup.SingleInstanceMutexName(AppContext.BaseDirectory);
             _mutex = new Mutex(false, mutexID, out bool newInstanceCreated);
             if (!newInstanceCreated)
             {
@@ -303,44 +303,48 @@ namespace mRemoteNG.App
         private static IntPtr GetRunningSingletonInstanceWindowHandle()
         {
             IntPtr windowHandle = IntPtr.Zero;
-            Process currentProcess = Process.GetCurrentProcess();
-            foreach (Process enumeratedProcess in Process.GetProcessesByName(currentProcess.ProcessName))
+            using Process currentProcess = Process.GetCurrentProcess();
+            // Both apphost names belong to this fork. Compare installation directories
+            // so either launcher can activate the other, without targeting upstream.
+            foreach (Process enumeratedProcess in Process.GetProcessesByName("MDRemoteNG")
+                         .Concat(Process.GetProcessesByName("mRemoteNG")))
             {
-                // Safely check for null MainModule and FileName
-                string? enumeratedFileName = null;
-                string? currentFileName = null;
-                try
+                using (enumeratedProcess)
                 {
-                    enumeratedFileName = enumeratedProcess.MainModule?.FileName;
-                    currentFileName = currentProcess.MainModule?.FileName;
-                }
-                catch
-                {
-                    // Access to MainModule can throw exceptions for some processes; ignore and continue
-                    continue;
-                }
+                    string? enumeratedFileName;
+                    string? currentFileName;
+                    try
+                    {
+                        enumeratedFileName = enumeratedProcess.MainModule?.FileName;
+                        currentFileName = currentProcess.MainModule?.FileName;
+                    }
+                    catch
+                    {
+                        // Protected system processes may deny MainModule access.
+                        continue;
+                    }
 
-                if (enumeratedProcess.Id != currentProcess.Id &&
-                    !string.IsNullOrEmpty(enumeratedFileName) &&
-                    !string.IsNullOrEmpty(currentFileName) &&
-                    enumeratedFileName == currentFileName &&
-                    enumeratedProcess.MainWindowHandle != IntPtr.Zero)
-                    windowHandle = enumeratedProcess.MainWindowHandle;
+                    if (enumeratedProcess.Id != currentProcess.Id &&
+                        !string.IsNullOrEmpty(enumeratedFileName) &&
+                        !string.IsNullOrEmpty(currentFileName) &&
+                        string.Equals(Path.GetDirectoryName(enumeratedFileName), Path.GetDirectoryName(currentFileName), StringComparison.OrdinalIgnoreCase) &&
+                        enumeratedProcess.MainWindowHandle != IntPtr.Zero)
+                        windowHandle = enumeratedProcess.MainWindowHandle;
+                }
             }
 
             return windowHandle;
         }
 
-        private static void CatchAllUnhandledExceptions()
-        {
-            Application.ThreadException += ApplicationOnThreadException;
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-            AppDomain.CurrentDomain.UnhandledException += CurrentDomainOnUnhandledException;
-        }
-
         private static void ApplicationOnThreadException(object sender, ThreadExceptionEventArgs e)
         {
             CloseSplash();
+            if (!MDRemoteNgSession.IsUnlocked || !FrmMain.IsCreated)
+            {
+                ShowStartupFailure(e.Exception);
+                Application.ExitThread();
+                return;
+            }
             if (FrmMain.Default.IsDisposed) return;
             FrmUnhandledException window = new(e.Exception, false);
             window.ShowDialog(FrmMain.Default);
@@ -350,8 +354,33 @@ namespace mRemoteNG.App
         {
             Exception exception = e.ExceptionObject as Exception
                                   ?? new Exception(e.ExceptionObject?.ToString() ?? "Unknown error");
+            if (!MDRemoteNgSession.IsUnlocked || !FrmMain.IsCreated)
+            {
+                ShowStartupFailure(exception);
+                return;
+            }
             FrmUnhandledException window = new(exception, e.IsTerminating);
             window.ShowDialog(FrmMain.Default);
+        }
+
+        private static void ShowStartupFailure(Exception exception)
+        {
+            string details = "";
+            try
+            {
+                string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MDRemoteNG");
+                Directory.CreateDirectory(directory);
+                string path = Path.Combine(directory, "startup-error.log");
+                File.WriteAllText(path, DateTimeOffset.Now.ToString("O") + Environment.NewLine + exception);
+                details = "\n\nDetails: " + path;
+            }
+            catch (Exception logException)
+            {
+                Debug.WriteLine("Could not record startup failure: " + logException.GetType().Name);
+            }
+            // Never construct FrmMain as an error-dialog owner before the PIN is accepted.
+            MessageBox.Show("MDRemoteNG could not finish starting.\n\n" + exception.Message + details,
+                "MDRemoteNG startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
         private static void ShowSplashOnStaThread()

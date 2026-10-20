@@ -1,8 +1,9 @@
 ﻿using System;
 using System.ComponentModel;
-using System.Configuration;
 using System.Runtime.Versioning;
 using mRemoteNG.App;
+using mRemoteNG.Connection.Protocol.RDP;
+using mRemoteNG.Messages;
 
 
 namespace mRemoteNG.Connection
@@ -32,13 +33,22 @@ namespace mRemoteNG.Connection
                     string expectedPropertyName = propertyNameMutator(property.Name);
                     System.Reflection.PropertyInfo propertyFromSource = typeof(TSource).GetProperty(expectedPropertyName);
                     if (propertyFromSource == null)
-                        throw new SettingsPropertyNotFoundException($"No property with name '{expectedPropertyName}' found.");
+                    {
+                        // Older settings schemas do not contain every connection property.
+                        // Preserve the defaults established by ConnectionInfo in that case.
+                        Runtime.MessageCollector?.AddMessage(MessageClass.DebugMsg,
+                            $"Default connection setting '{expectedPropertyName}' is unavailable; keeping its current default.");
+                        continue;
+                    }
 
                     object valueFromSource = propertyFromSource.GetValue(sourceInstance, null);
 
                     if (property.PropertyType.IsEnum)
                     {
-                        property.SetValue(Instance, Enum.Parse(property.PropertyType, valueFromSource.ToString()), null);
+                        object enumValue = property.PropertyType == typeof(RDPDiskDrives) && valueFromSource is bool redirectDrives
+                            ? redirectDrives ? RDPDiskDrives.All : RDPDiskDrives.None
+                            : Enum.Parse(property.PropertyType, valueFromSource.ToString());
+                        property.SetValue(Instance, enumValue, null);
                         continue;
                     }
 
@@ -66,10 +76,17 @@ namespace mRemoteNG.Connection
                     System.Reflection.PropertyInfo propertyFromDestination = typeof(TDestination).GetProperty(expectedPropertyName);
 
                     if (propertyFromDestination == null)
-                        throw new SettingsPropertyNotFoundException($"No property with name '{expectedPropertyName}' found.");
+                    {
+                        Runtime.MessageCollector?.AddMessage(MessageClass.DebugMsg,
+                            $"Default connection setting '{expectedPropertyName}' is unavailable; skipping it.");
+                        continue;
+                    }
 
                     // ensure value is of correct type
-                    object value = Convert.ChangeType(property.GetValue(Instance, null), propertyFromDestination.PropertyType);
+                    object currentValue = property.GetValue(Instance, null);
+                    object value = currentValue is RDPDiskDrives drives && propertyFromDestination.PropertyType == typeof(bool)
+                        ? drives != RDPDiskDrives.None
+                        : Convert.ChangeType(currentValue, propertyFromDestination.PropertyType);
 
                     propertyFromDestination.SetValue(destinationInstance, value, null);
                 }

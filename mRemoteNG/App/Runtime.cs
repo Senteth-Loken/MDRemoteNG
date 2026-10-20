@@ -47,7 +47,9 @@ namespace mRemoteNG.App
         /// </summary>
         public static bool UseCredentialManager => false;
 
-        public static WindowList WindowList { get; set; } = null!; // initialized during FrmMain startup
+        // Layout loading can create the General panel before FrmMain_Load finishes.
+        // Keep its registration list available before any panel can be shown.
+        public static WindowList WindowList { get; set; } = new();
         public static MessageCollector MessageCollector { get; } = new MessageCollector();
         public static NotificationAreaIcon NotificationAreaIcon { get; set; } = null!; // initialized on demand by settings/UI
         public static ExternalToolsService ExternalToolsService { get; } = new ExternalToolsService();

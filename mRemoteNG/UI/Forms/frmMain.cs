@@ -230,8 +230,6 @@ namespace mRemoteNG.UI.Forms
 
             _fpChainedWindowHandle = NativeMethods.SetClipboardViewer(Handle);
 
-            Runtime.WindowList = [];
-
             if (Properties.App.Default.ResetPanels)
                 SetDefaultLayout();
             else
