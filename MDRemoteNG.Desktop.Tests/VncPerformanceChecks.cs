@@ -22,6 +22,16 @@ internal static class VncPerformanceChecks
         }
         static bool Is(VncRectangle value, int x, int y, int width, int height) =>
             value.X == x && value.Y == y && value.Width == width && value.Height == height;
+        static bool ApplyAndMatches(VncFramebuffer source, IReadOnlyList<VncRectangle> changes, int[] displayed)
+        {
+            foreach (var change in changes)
+                for (int y = change.Y; y < change.Y + change.Height; y++)
+                {
+                    int offset = y * source.Width + change.X;
+                    source.GetPixels().AsSpan(offset, change.Width).CopyTo(displayed.AsSpan(offset, change.Width));
+                }
+            return displayed.AsSpan().SequenceEqual(source.GetPixels());
+        }
 
         var pacing = new VncFramePacing();
         Check(pacing.TargetRate == 60, "A new authenticated stream targets 60 updates per second instead of imposing a 125 ms wait.");
@@ -156,6 +166,93 @@ internal static class VncPerformanceChecks
         var afterResizeCrop = knownCache.FindChanges(resizeCrop, Request(resizeCrop));
         Check(afterResizeCrop.Count == 1 && Is(afterResizeCrop[0], 0, 0, 32, 32),
             "Resizing clears whole-frame knowledge so an initial crop cannot hide unseen pixels in a later full request.");
+
+        var separatedFrame = new VncFramebuffer("Separated changed row bands", 65, 65);
+        var separatedCache = new DirtyFramebufferCache();
+        var separatedDisplay = new int[65 * 65];
+        separatedCache.FindChanges(separatedFrame, Request(separatedFrame, false));
+        separatedFrame.SetPixel(33, 1, 7);
+        separatedFrame.SetPixel(33, 49, 9);
+        var separatedBands = separatedCache.FindChanges(separatedFrame, Request(separatedFrame));
+        Check(separatedBands.Count == 2 && Is(separatedBands[0], 32, 0, 16, 16) && Is(separatedBands[1], 32, 48, 16, 16) &&
+              ApplyAndMatches(separatedFrame, separatedBands, separatedDisplay),
+            "An unchanged row-band gap cannot merge equal-X dirty runs or omit pixels from the reconstructed display.");
+        separatedFrame.SetPixel(64, 64, 11);
+        var lastBand = separatedCache.FindChanges(separatedFrame, Request(separatedFrame));
+        Check(lastBand.Count == 1 && Is(lastBand[0], 64, 64, 1, 1) &&
+              ApplyAndMatches(separatedFrame, lastBand, separatedDisplay),
+            "The last partial row band and odd right edge remain visible after all preceding bands match.");
+        separatedFrame.SetPixel(33, 1, 0);
+        var restoredBand = separatedCache.FindChanges(separatedFrame, Request(separatedFrame));
+        Check(restoredBand.Count == 1 && ApplyAndMatches(separatedFrame, restoredBand, separatedDisplay) &&
+              separatedCache.FindChanges(separatedFrame, Request(separatedFrame)).Count == 0,
+            "Remembering only returned rectangles delivers a reverted band once and preserves the rest of the display snapshot.");
+
+        var cropFrame = new VncFramebuffer("Known nonzero crop", 37, 35);
+        var cropCache = new DirtyFramebufferCache();
+        cropCache.FindChanges(cropFrame, Request(cropFrame, false));
+        cropFrame.SetPixel(21, 25, 13);
+        cropFrame.SetPixel(30, 8, 17);
+        var cropRequest = new FramebufferUpdateRequest(true, new VncRectangle(5, 7, 17, 19));
+        var cropOnly = cropCache.FindChanges(cropFrame, cropRequest);
+        var outsideCrop = cropCache.FindChanges(cropFrame, Request(cropFrame));
+        Check(cropOnly.Count == 1 && Is(cropOnly[0], 21, 23, 1, 3) &&
+              outsideCrop.Count == 1 && Is(outsideCrop[0], 16, 0, 16, 16),
+            "A known partial crop keeps precise tile geometry and cannot remember an unsent change outside its requested pixels.");
+
+        var random = new Random(20261021);
+        var reconstructionCache = new DirtyFramebufferCache();
+        var reconstructionFrame = new VncFramebuffer("Seeded reconstructed display", 73, 51);
+        int[] displayed = new int[73 * 51];
+        bool[] seen = new bool[displayed.Length];
+        for (int step = 0; step < 200; step++)
+        {
+            if (step > 0 && step % 31 == 0)
+            {
+                int width = reconstructionFrame.Width == 73 ? 37 : 73;
+                int height = width == 73 ? 51 : 35;
+                reconstructionFrame = new VncFramebuffer("Seeded resized display", width, height);
+                displayed = new int[width * height];
+                seen = new bool[displayed.Length];
+            }
+            for (int mutation = 0; mutation < 5; mutation++)
+                reconstructionFrame.SetPixel(random.Next(reconstructionFrame.Width), random.Next(reconstructionFrame.Height),
+                    step % 17 == 0 ? 0 : step + 1);
+            int x = step % 3 == 0 ? 0 : random.Next(reconstructionFrame.Width);
+            int y = step % 3 == 0 ? 0 : random.Next(reconstructionFrame.Height);
+            int widthRemaining = reconstructionFrame.Width - x, heightRemaining = reconstructionFrame.Height - y;
+            var requestRegion = new VncRectangle(x, y, step % 3 == 0 ? widthRemaining : random.Next(1, widthRemaining + 1),
+                step % 3 == 0 ? heightRemaining : random.Next(1, heightRemaining + 1));
+            var reconstructionRequest = new FramebufferUpdateRequest(step % 11 != 0, requestRegion);
+            var regions = reconstructionCache.FindChanges(reconstructionFrame, reconstructionRequest);
+            if (regions.Count > 64) throw new Exception("Seeded updates exceeded the rectangle limit.");
+            var covered = new bool[displayed.Length];
+            foreach (var region in regions)
+            {
+                if (region.X < requestRegion.X || region.Y < requestRegion.Y ||
+                    region.X + region.Width > requestRegion.X + requestRegion.Width ||
+                    region.Y + region.Height > requestRegion.Y + requestRegion.Height)
+                    throw new Exception("Seeded update escaped its requested crop.");
+                for (int row = region.Y; row < region.Y + region.Height; row++)
+                    for (int column = region.X; column < region.X + region.Width; column++)
+                    {
+                        int offset = row * reconstructionFrame.Width + column;
+                        covered[offset] = true;
+                    }
+            }
+            for (int row = requestRegion.Y; row < requestRegion.Y + requestRegion.Height; row++)
+                for (int column = requestRegion.X; column < requestRegion.X + requestRegion.Width; column++)
+                {
+                    int offset = row * reconstructionFrame.Width + column;
+                    int expectedPixel = reconstructionFrame.GetPixels()[offset];
+                    if ((!reconstructionRequest.Incremental || !seen[offset] || displayed[offset] != expectedPixel) && !covered[offset])
+                        throw new Exception($"Seeded display reconstruction missed a requested pixel at step {step}.");
+                    if (covered[offset]) { displayed[offset] = expectedPixel; seen[offset] = true; }
+                }
+            if (reconstructionCache.FindChanges(reconstructionFrame, new FramebufferUpdateRequest(true, requestRegion)).Count != 0)
+                throw new Exception("A reconstructed region was reported dirty again without any pixel changes.");
+        }
+        Check(true, "Two hundred seeded incremental, forced, cropped and resized updates reconstruct every requested pixel without forgetting unsent changes.");
 
         using (var inner = new RecordingStream())
         using (var output = new FramebufferWriteStream(inner))

@@ -76,6 +76,13 @@ internal sealed class DirtyFramebufferCache
             for (int y = region.Y; y < bottom; y += TileSize)
             {
                 int height = Math.Min(TileSize, bottom - y), runStart = -1;
+                if (_allKnown && region.X == 0 && region.Width == _width &&
+                    IsRowBandUnchanged(current, y, height))
+                {
+                    // Runs on opposite sides of an unchanged band are not adjacent.
+                    previous.Clear();
+                    continue;
+                }
                 var next = new Dictionary<(int X, int Width), int>();
                 for (int x = region.X; x < right; x += TileSize)
                 {
@@ -112,10 +119,18 @@ internal sealed class DirtyFramebufferCache
                 }
                 previous = next;
             }
-            if (_allKnown) Remember(current, region);
+            IReadOnlyList<VncRectangle> changes = collapse ? [bounds] : rectangles;
+            if (_allKnown)
+                foreach (var change in changes) Remember(current, change);
             else if (IsFullFrame(region)) _allKnown = true;
-            return collapse ? [bounds] : rectangles;
+            return changes;
         }
+    }
+
+    private bool IsRowBandUnchanged(int[] current, int y, int height)
+    {
+        int offset = y * _width, count = height * _width;
+        return current.AsSpan(offset, count).SequenceEqual(_pixels.AsSpan(offset, count));
     }
 
     private bool IsChanged(int[] current, VncRectangle tile)
@@ -146,7 +161,7 @@ internal sealed class DirtyFramebufferCache
         if (IsFullFrame(region))
         {
             current.AsSpan().CopyTo(_pixels);
-            Array.Fill(_known, ulong.MaxValue);
+            if (!_allKnown) Array.Fill(_known, ulong.MaxValue);
             _allKnown = true;
             return;
         }

@@ -1607,7 +1607,7 @@
   ],
   "SelectedCandidate": "Entire V2 candidate-native-v2 variant; no metrics or runs are mixed with V3.",
   "ReleaseVerification": {
-    "Status": "The old unoptimized package fails all primary acceptance scopes. The rebuilt optimized package improves performance but still misses p95 gates: 4K LAN passes 5 of 6 and loopback passes 4 of 6. The 70% goal remains unmet and actual CONDOR verification after installation is pending.",
+    "Status": "The existing packages retain their failed primary-gate outcomes. The isolated row-band Desktop candidate passes both primary 4K profiles, but its new installer-payload validation and actual CONDOR verification remain pending; the live goal is not complete.",
     "OldUnoptimizedPackage": {
       "ProductVersion": "1.78.6",
       "InstallerSHA256": "F3C54B7D55B6C05FA2ADFFDEF32A377B7D9481A37F028B973236BAE21B5F1EFA",
@@ -1969,7 +1969,7 @@
       "RuntimeManifestArtifact": ".build/condor-1.78.6/packaged-performance/RUNTIME-MANIFEST.json",
       "RuntimeManifestSHA256": "30CB52506873BC3322062BD0FBBF4F06A43CE7D3EA8CC97A56F861B17AF8D293"
     },
-    "RequiredNextStep": "Install the new optimized MSI and verify the actual CONDOR host. Preserve both packaged datasets and their misses. Do not mark the live 70% goal complete unless the actual host verification supports it; no additional synthetic iterations are planned.",
+    "RequiredNextStep": "Build and validate the new installer containing the row-band candidate, preserving all earlier results. Then verify actual CONDOR after installation before marking the live goal complete.",
     "OptimizedPackage": {
       "ProductVersion": "1.78.6",
       "InstallerSHA256": "2625B1ACD59A442B38660B18397CC74482AB4EF2075FE1DF95984795BFCECBB9",
@@ -2301,6 +2301,339 @@
       "EvidenceSHA256": "6B6AC47801AC2BE42EBBA5C3ECB600E86FA3626BCBACA523B0A21208EE013E90",
       "RuntimeManifestArtifact": ".build/condor-1.78.6-optimized/packaged-performance/RUNTIME-MANIFEST.json",
       "RuntimeManifestSHA256": "5C1A3E1C324DE1EE8AB77F70B603456073EC2B399CE1D16A4069CD2A463793CB"
+    },
+    "RowBandCandidate": {
+      "Variant": "Row-band v1 Desktop dirty-cache candidate",
+      "MeasuredStatus": "All six fixed 70% gates pass in both tested 4K profiles in the isolated exact-MSI dependency/viewer fixture.",
+      "AllPrimaryTargetsPassed": true,
+      "CandidateOnly": true,
+      "DeliveredMSIUnchanged": true,
+      "GoalComplete": false,
+      "CandidateDesktopSHA256": "28FEE379FC77740FE4D9B7BCC52E22EEA51C09AB14BFFAE2E08EA4DE00F51204",
+      "HarnessSHA256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58",
+      "ChangedRuntimeFiles": [
+        {
+          "Name": "MDRemoteNG.Desktop.dll",
+          "SourceHash": "401B7334C76556D22CB686FAAAEF95BCB13C6C533226E4500330DC6364A229AB",
+          "CandidateHash": "28FEE379FC77740FE4D9B7BCC52E22EEA51C09AB14BFFAE2E08EA4DE00F51204"
+        }
+      ],
+      "RuntimePayload": [
+        {
+          "Name": "MDRemoteNG.Core.dll",
+          "Size": 42496,
+          "SHA256": "D80B36568A281BE5073C7697C04F9E9C949449F8BF1052C67BB801EF81FA1348"
+        },
+        {
+          "Name": "MDRemoteNG.Desktop.dll",
+          "Size": 69632,
+          "SHA256": "28FEE379FC77740FE4D9B7BCC52E22EEA51C09AB14BFFAE2E08EA4DE00F51204"
+        },
+        {
+          "Name": "RemoteViewing.dll",
+          "Size": 86016,
+          "SHA256": "B5F61AECE6E0907996C085AA28634CFE07F4FCC524A66F7B07BA93954722B7FC"
+        },
+        {
+          "Name": "VncSharpCore.dll",
+          "Size": 311296,
+          "SHA256": "E6DF94C648D6D1C69A041A4AB6348B5502C2F1C4399F5E52DEAB9EF411D6526B"
+        },
+        {
+          "Name": "MDRemoteNG.Vnc.Tests.dll",
+          "Size": 98816,
+          "SHA256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58"
+        },
+        {
+          "Name": "MDRemoteNG.Vnc.Benchmarks.dll",
+          "Size": 98816,
+          "SHA256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58"
+        }
+      ],
+      "Stage": "The optimized 1.78.6 self-contained fixture was cloned. Only MDRemoteNG.Desktop.dll was replaced. Exact delivered Discovery Core/RemoteViewing, main R2R VncSharpCore viewer and bundled 10.0.1 CLR/compression runtime stayed unchanged. No clock, budget, scheduler, profile or baseline changes.",
+      "BaselineReuse": "The original fixed final-native-v2 shipped 1.78.5 baseline 4K LAN/loopback reports remain unchanged.",
+      "ProfileGateCounts": [
+        {
+          "Profile": "4K LAN",
+          "Passed": 6,
+          "Required": 6
+        },
+        {
+          "Profile": "4K loopback",
+          "Passed": 6,
+          "Required": 6
+        }
+      ],
+      "ExactProfileResults": [
+        {
+          "Profile": "lan",
+          "PassedMetrics": 6,
+          "RequiredMetrics": 6,
+          "RunPath": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-row-band-candidate\\performance\\candidate-4k-lan.json",
+          "RunSHA256": "C46CF2E73091CF9DE8D46B3193CF4A4F3761B1EDE0F29BBA52437C2DBA181E40",
+          "VerdictPath": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-row-band-candidate\\performance\\verdict-4k-lan.json",
+          "VerdictSHA256": "3B3BD007D77DE7FFEC7189D282361801635D5C5446A7D84C7F51865778AAB922",
+          "Comparison": {
+            "Baseline": "shipped-1.78.5",
+            "Current": "row-band-v1-exact-msi-viewer",
+            "Profile": "lan",
+            "RequiredReduction": 0.7,
+            "ProductionSettings": true,
+            "FullAcceptanceWorkload": true,
+            "AllSixMetricsPassed": true,
+            "ProductionAcceptancePassed": true,
+            "HarnessSha256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58",
+            "Verdicts": [
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p50",
+                "BaselineMs": 119.5941,
+                "CurrentMs": 23.6028,
+                "Reduction": 0.802642438046693,
+                "Passed": true
+              },
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p95",
+                "BaselineMs": 182.0866,
+                "CurrentMs": 46.0135,
+                "Reduction": 0.7472988127627185,
+                "Passed": true
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p50",
+                "BaselineMs": 440.4184,
+                "CurrentMs": 116.7154,
+                "Reduction": 0.7349897279496043,
+                "Passed": true
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p95",
+                "BaselineMs": 605.2918,
+                "CurrentMs": 162.6234,
+                "Reduction": 0.7313305747740181,
+                "Passed": true
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p50",
+                "BaselineMs": 624.0999020000002,
+                "CurrentMs": 153.95367378640782,
+                "Reduction": 0.7533188624240358,
+                "Passed": true
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p95",
+                "BaselineMs": 823.3045487499995,
+                "CurrentMs": 207.48232722222207,
+                "Reduction": 0.7479883628272955,
+                "Passed": true
+              }
+            ],
+            "Boundary": "Precomputed frame presentation START (before lock/copy) through actual control OnPaint using a preallocated Graphics and production dirty-region clip. Continuous gate integrates exact linear visible-age segments split at each paint boundary. Delivered-frame age, skipped IDs and frame intervals remain separately reported."
+          },
+          "Environment": {
+            "Framework": ".NET 10.0.1",
+            "OS": "Microsoft Windows 10.0.26200",
+            "Processors": "24",
+            "Machine": "GYRFALCON",
+            "ServerGC": "False"
+          },
+          "ObservedRuntimeHashes": {
+            "VncSharpCore": "E6DF94C648D6D1C69A041A4AB6348B5502C2F1C4399F5E52DEAB9EF411D6526B",
+            "MDRemoteNG.Desktop": "28FEE379FC77740FE4D9B7BCC52E22EEA51C09AB14BFFAE2E08EA4DE00F51204",
+            "MDRemoteNG.Core": "D80B36568A281BE5073C7697C04F9E9C949449F8BF1052C67BB801EF81FA1348",
+            "RemoteViewing": "B5F61AECE6E0907996C085AA28634CFE07F4FCC524A66F7B07BA93954722B7FC"
+          },
+          "InputCount": 0,
+          "LibraryMaxUpdateRate": 1000,
+          "InitialPolicyTargetCaptureRate": 60,
+          "CaptureCount": 654,
+          "ProcessCpuMs": 18656.25,
+          "ProcessAllocatedBytes": 191731992,
+          "Produced": 299,
+          "Displayed": 106,
+          "ProducerMissedDeadlines": 1,
+          "Summaries": [
+            {
+              "Scenario": "idle-patch",
+              "Samples": 30,
+              "PresentationToPaintP50Ms": 23.6028,
+              "PresentationToPaintP95Ms": 46.0135,
+              "PresentationToPaintMaxMs": 49.9288,
+              "PresentationP50Ms": 0.0403,
+              "DecodeReadyP50Ms": 23.5446,
+              "PaintP50Ms": 0.0724,
+              "DisplayIntervalP50Ms": 298.4585,
+              "DisplayIntervalP95Ms": 425.7852
+            },
+            {
+              "Scenario": "full-frame",
+              "Samples": 20,
+              "PresentationToPaintP50Ms": 116.7154,
+              "PresentationToPaintP95Ms": 162.6234,
+              "PresentationToPaintMaxMs": 180.299,
+              "PresentationP50Ms": 9.5517,
+              "DecodeReadyP50Ms": 101.4782,
+              "PaintP50Ms": 15.9899,
+              "DisplayIntervalP50Ms": 230.5804,
+              "DisplayIntervalP95Ms": 302.7587
+            },
+            {
+              "Scenario": "continuous",
+              "Samples": 106,
+              "PresentationToPaintP50Ms": 103.8395,
+              "PresentationToPaintP95Ms": 131.3173,
+              "PresentationToPaintMaxMs": 187.4969,
+              "PresentationP50Ms": 4.8293,
+              "DecodeReadyP50Ms": 87.265,
+              "PaintP50Ms": 16.5601,
+              "DisplayIntervalP50Ms": 96.3848,
+              "DisplayIntervalP95Ms": 113.2157
+            }
+          ]
+        },
+        {
+          "Profile": "loopback",
+          "PassedMetrics": 6,
+          "RequiredMetrics": 6,
+          "RunPath": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-row-band-candidate\\performance\\candidate-4k-loopback.json",
+          "RunSHA256": "24D34923D65E4744DF3990C892185E553C535A372E514D15181C8DA0D537BA3B",
+          "VerdictPath": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-row-band-candidate\\performance\\verdict-4k-loopback.json",
+          "VerdictSHA256": "E3B9F5CF1827AAEB43AFB7F05744EBCDACC64F0E3F502FFEF3A7B573ED079AA1",
+          "Comparison": {
+            "Baseline": "shipped-1.78.5",
+            "Current": "row-band-v1-exact-msi-viewer",
+            "Profile": "loopback",
+            "RequiredReduction": 0.7,
+            "ProductionSettings": true,
+            "FullAcceptanceWorkload": true,
+            "AllSixMetricsPassed": true,
+            "ProductionAcceptancePassed": true,
+            "HarnessSha256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58",
+            "Verdicts": [
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p50",
+                "BaselineMs": 103.2922,
+                "CurrentMs": 21.1729,
+                "Reduction": 0.7950193722275254,
+                "Passed": true
+              },
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p95",
+                "BaselineMs": 168.6404,
+                "CurrentMs": 34.8851,
+                "Reduction": 0.7931391291766385,
+                "Passed": true
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p50",
+                "BaselineMs": 446.8549,
+                "CurrentMs": 103.8755,
+                "Reduction": 0.7675408728873735,
+                "Passed": true
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p95",
+                "BaselineMs": 575.9318,
+                "CurrentMs": 129.0665,
+                "Reduction": 0.7758996811775283,
+                "Passed": true
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p50",
+                "BaselineMs": 600.0536000000001,
+                "CurrentMs": 147.38619396551724,
+                "Reduction": 0.7543782855972913,
+                "Passed": true
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p95",
+                "BaselineMs": 812.3558833333327,
+                "CurrentMs": 193.36412021739133,
+                "Reduction": 0.7619711702905849,
+                "Passed": true
+              }
+            ],
+            "Boundary": "Precomputed frame presentation START (before lock/copy) through actual control OnPaint using a preallocated Graphics and production dirty-region clip. Continuous gate integrates exact linear visible-age segments split at each paint boundary. Delivered-frame age, skipped IDs and frame intervals remain separately reported."
+          },
+          "Environment": {
+            "Framework": ".NET 10.0.1",
+            "OS": "Microsoft Windows 10.0.26200",
+            "Processors": "24",
+            "Machine": "GYRFALCON",
+            "ServerGC": "False"
+          },
+          "ObservedRuntimeHashes": {
+            "VncSharpCore": "E6DF94C648D6D1C69A041A4AB6348B5502C2F1C4399F5E52DEAB9EF411D6526B",
+            "MDRemoteNG.Desktop": "28FEE379FC77740FE4D9B7BCC52E22EEA51C09AB14BFFAE2E08EA4DE00F51204",
+            "MDRemoteNG.Core": "D80B36568A281BE5073C7697C04F9E9C949449F8BF1052C67BB801EF81FA1348",
+            "RemoteViewing": "B5F61AECE6E0907996C085AA28634CFE07F4FCC524A66F7B07BA93954722B7FC"
+          },
+          "InputCount": 0,
+          "LibraryMaxUpdateRate": 1000,
+          "InitialPolicyTargetCaptureRate": 60,
+          "CaptureCount": 664,
+          "ProcessCpuMs": 20140.625,
+          "ProcessAllocatedBytes": 191197200,
+          "Produced": 299,
+          "Displayed": 117,
+          "ProducerMissedDeadlines": 1,
+          "Summaries": [
+            {
+              "Scenario": "idle-patch",
+              "Samples": 30,
+              "PresentationToPaintP50Ms": 21.1729,
+              "PresentationToPaintP95Ms": 34.8851,
+              "PresentationToPaintMaxMs": 35.032,
+              "PresentationP50Ms": 0.041,
+              "DecodeReadyP50Ms": 21.0414,
+              "PaintP50Ms": 0.079,
+              "DisplayIntervalP50Ms": 301.5222,
+              "DisplayIntervalP95Ms": 395.4448
+            },
+            {
+              "Scenario": "full-frame",
+              "Samples": 20,
+              "PresentationToPaintP50Ms": 103.8755,
+              "PresentationToPaintP95Ms": 129.0665,
+              "PresentationToPaintMaxMs": 145.5009,
+              "PresentationP50Ms": 7.9196,
+              "DecodeReadyP50Ms": 87.8102,
+              "PaintP50Ms": 15.8716,
+              "DisplayIntervalP50Ms": 217.1197,
+              "DisplayIntervalP95Ms": 272.2393
+            },
+            {
+              "Scenario": "continuous",
+              "Samples": 117,
+              "PresentationToPaintP50Ms": 104.0039,
+              "PresentationToPaintP95Ms": 126.1419,
+              "PresentationToPaintMaxMs": 140.3233,
+              "PresentationP50Ms": 4.9579,
+              "DecodeReadyP50Ms": 87.6434,
+              "PaintP50Ms": 16.319,
+              "DisplayIntervalP50Ms": 84.3924,
+              "DisplayIntervalP95Ms": 102.3783
+            }
+          ]
+        }
+      ],
+      "EvidenceArtifact": ".build/vnc-row-band-candidate/ROW-BAND-PERFORMANCE.json",
+      "EvidenceSHA256": "B6402780DAD89863B13D7CAC8AB5858DBAF7877789A79EFB67F364D24D7848FD",
+      "RuntimeManifestArtifact": ".build/vnc-row-band-candidate/performance/RUNTIME-MANIFEST.json",
+      "RuntimeManifestSHA256": "3441B01185FC4DE538438A471D3D8302DF47701A2C2F54E929ACC38876C63F2B",
+      "AdditionalProfiles": "No 1080p or constrained-profile candidate results are claimed.",
+      "RequiredNext": "Validate a newly built installer containing this candidate as its own exact payload, then verify the actual CONDOR host after installation before marking the live goal complete."
     }
   },
   "RejectedPrototype": {

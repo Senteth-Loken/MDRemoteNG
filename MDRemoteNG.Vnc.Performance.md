@@ -133,7 +133,35 @@ the threshold. The 70% goal remains unmet. Final acceptance also requires
 installing the updated host and viewer and repeating the live probe against
 the fixed real CONDOR baseline above.
 
-The intended source passes 70 helper/TLS/cache checks and 102 actual viewer,
+### Row-band follow-up
+
+A subsequent host-cache change skips contiguous unchanged row bands after
+whole-frame knowledge has been established and remembers only the final changed
+rectangles. Unknown pixels, cropped requests, resize handling and the 64-rectangle
+bound retain their previous semantics. This removes hundreds of thousands of
+short row comparisons and a full 32 MiB cache copy from a small 4K update.
+Capture-rate and work-budget settings are unchanged.
+
+The candidate replaces only the helper Desktop assembly in the exact optimized
+1.78.6 runtime fixture; its actual precompiled viewer and all other DLLs remain
+identical. Both fixed primary profiles now pass all six gates:
+
+| Profile | Metric | Row-band candidate p50 / p95 | Reduction |
+| --- | --- | ---: | ---: |
+| Loopback | Idle patch | 21.17 / 34.89 ms | 79.50% / 79.31% |
+| Loopback | Full frame | 103.88 / 129.07 ms | 76.75% / 77.59% |
+| Loopback | Visible-frame age | 147.39 / 193.36 ms | 75.44% / 76.20% |
+| Simulated LAN | Idle patch | 23.60 / 46.01 ms | 80.26% / 74.73% |
+| Simulated LAN | Full frame | 116.72 / 162.62 ms | 73.50% / 73.13% |
+| Simulated LAN | Visible-frame age | 153.95 / 207.48 ms | 75.33% / 74.80% |
+
+Seventy-five focused host checks and 102 viewer checks in default and strict
+compression modes pass for this candidate. Five added cache checks include
+reconstruction of 200 seeded updates across cropped and resized displays.
+The follow-up requires a new 1.78.7 installer, exact-payload verification and
+the real CONDOR measurement before the goal can be considered achieved.
+
+The intended source passes 75 helper/TLS/cache checks and 102 actual viewer,
 codec and pixel-transfer checks, with the latter repeated under strict zlib
 validation. Nine benchmark self-checks cover exact visible-age integration
 and timer cancellation/teardown. Synthetic pixel tests include cropped and
