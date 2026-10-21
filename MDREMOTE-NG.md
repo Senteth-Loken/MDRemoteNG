@@ -38,6 +38,8 @@ The sharing checkbox applies to the selected protocol. Uncheck it and Save to re
 
 The embedded server uses [RemoteViewing 1.1.0](https://github.com/SeekHisKingdom/RemoteViewing), with its BSD two-clause license shipped at `Licenses/RemoteViewing-LICENSE.txt`. SSH uses Microsoft's [installation](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) and [configuration](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-server-configuration) interfaces.
 
+The viewer builds from the official [VncSharpCore cursor fix](https://github.com/mRemoteNG/VncSharpCore/commit/dc87ba02b0090331d1956cd4a6ba0168ecd301d6), pinned under `External/VncSharpCore`. NuGet 1.2.1 omitted the cursor resource and threw `Value cannot be null (stream)` after authentication. The source build restores that resource and retains the original assembly identity and protocol implementation. Its GPL, compression license and provenance ship under `Licenses/`; the source and modification notes remain in the repository.
+
 ## Network requirements
 
 Discovery uses IPv4 subnet broadcasts on UDP 48765 and a dynamically assigned TCP port for authentication. Both installs must be on the same broadcast subnet, on Windows **Private** or **Domain authenticated** network profiles. Public networks, IPv6-only networks, routed discovery and NAT traversal are excluded. Windows Firewall or wireless client isolation can block discovery.
@@ -87,6 +89,7 @@ dotnet run --project MDRemoteNG.Core.Tests -c Release
 dotnet run --project MDRemoteNG.Discovery.Tests -c Release
 dotnet run --project MDRemoteNG.Host.Tests -c Release
 dotnet run --project MDRemoteNG.Desktop.Tests -c Release
+dotnet run --project MDRemoteNG.Vnc.Tests -c Release
 dotnet run --project MDRemoteNG.UI.Tests -c Release
 dotnet run --project MDRemoteNG.Defaults.Tests -c Release
 ```
@@ -103,3 +106,5 @@ The tests use temporary workspace profiles and test credentials, never your live
 The x64 desktop build and full self-contained publish succeeded, and all 339 focused checks passed. The startup checks create and dispose a native PIN-window handle before creating the next window, covering the post-PIN initialization failure. They also check separate instance locks, native requestor-account verification, malformed setup argument rejection, panel registration/reuse, legacy default settings, and production XML round trips of current 2.9 and legacy 2.8 formats with encrypted credentials. Required desktop/helper/runtime/language files were verified. The MSI compiled and its payload and separate product identity were checked through read-only MSI inspection with ICE validation suppressed locally; full Windows Installer Service validation remains to be run on a packaging machine. The broader upstream test project has existing compilation errors and is not included in the passing count. Synthetic VNC checks exercise real loopback TLS, invalid pins/tokens, RFB authentication, synthetic pixels, fake input callbacks, session limits and display-loss recovery. Elevated live setup, alternate-administrator UAC, real screen capture/input, ARM64 and two-machine remote sessions have not been exercised here.
 
 Startup failures now display an error without constructing the main window before unlock. Details are recorded in `%LOCALAPPDATA%\MDRemoteNG\startup-error.log`.
+
+The viewer correction additionally passes 17 checks using the actual Windows Forms control over the pinned TLS tunnel. They verify the embedded cursor, password authentication, all decoded synthetic pixels, repeated reconnects with the same control, capture-loss cleanup and rejection of incorrect certificate pins, sharing tokens and RFB passwords. These checks use hidden, view-only controls and a synthetic desktop; they do not show windows, capture a real screen, access the clipboard or send Windows input.

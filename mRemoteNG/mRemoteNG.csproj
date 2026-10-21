@@ -143,7 +143,6 @@
     <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="SSH.NET" />
     <PackageReference Include="System.Management" />
-    <PackageReference Include="VncSharpCore" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Language\Language.Designer.cs">
@@ -530,6 +529,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ExternalConnectors\ExternalConnectors.csproj" />
+    <ProjectReference Include="..\External\VncSharpCore\VncSharpCore.csproj" />
     <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
     <ProjectReference Include="..\MDRemoteNG.Host\MDRemoteNG.Host.csproj" />
     <ProjectReference Include="..\MDRemoteNG.Desktop\MDRemoteNG.Desktop.csproj" />
@@ -580,6 +580,7 @@
     <ItemGroup>
       <ReferenceCopyLocalPaths Condition=" '%(ReferenceCopyLocalPaths.NuGetPackageId)' != '' and '%(ReferenceCopyLocalPaths.Filename)' != 'e_sqlite3' and '%(ReferenceCopyLocalPaths.Filename)' != 'libe_sqlite3' and !$([System.String]::Copy('%(ReferenceCopyLocalPaths.FullPath)').Contains('\runtimes\')) " Update="%(ReferenceCopyLocalPaths)" DestinationSubDirectory="Assemblies\" />
       <ReferenceCopyLocalPaths Condition=" '%(ReferenceCopyLocalPaths.Filename)' == 'mRp.Contracts' " Update="%(ReferenceCopyLocalPaths)" DestinationSubDirectory="Assemblies\" />
+      <ReferenceCopyLocalPaths Condition=" '%(ReferenceCopyLocalPaths.Filename)' == 'VncSharpCore' " Update="%(ReferenceCopyLocalPaths)" DestinationSubDirectory="Assemblies\" />
     </ItemGroup>
   </Target>
   <!--
@@ -602,6 +603,7 @@
            are excluded from the move. -->
       <ResolvedFileToPublish Condition=" '%(ResolvedFileToPublish.NuGetPackageId)' != '' and '%(ResolvedFileToPublish.Extension)' == '.dll' and '%(ResolvedFileToPublish.AssetType)' != 'native' and '%(ResolvedFileToPublish.Filename)' != 'e_sqlite3' and '%(ResolvedFileToPublish.Filename)' != 'libe_sqlite3' and !$([System.String]::Copy('%(ResolvedFileToPublish.NuGetPackageId)').StartsWith('Microsoft.NETCore.App')) and !$([System.String]::Copy('%(ResolvedFileToPublish.NuGetPackageId)').StartsWith('Microsoft.WindowsDesktop.App')) and !$([System.String]::Copy('%(ResolvedFileToPublish.NuGetPackageId)').StartsWith('Microsoft.AspNetCore.App')) and !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Contains('\')) and !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Contains('/')) " Update="%(ResolvedFileToPublish.Identity)" RelativePath="Assemblies\%(ResolvedFileToPublish.RelativePath)" />
       <ResolvedFileToPublish Condition=" '%(ResolvedFileToPublish.Filename)' == 'mRp.Contracts' and '%(ResolvedFileToPublish.Extension)' == '.dll' " Update="%(ResolvedFileToPublish.Identity)" RelativePath="Assemblies\%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)" />
+      <ResolvedFileToPublish Condition=" '%(ResolvedFileToPublish.Filename)' == 'VncSharpCore' and '%(ResolvedFileToPublish.Extension)' == '.dll' " Update="%(ResolvedFileToPublish.Identity)" RelativePath="Assemblies\%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)" />
       <ResolvedFileToPublish Condition=" $([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('mRp.')) and '%(ResolvedFileToPublish.Filename)' != 'mRp.Contracts' and '%(ResolvedFileToPublish.Extension)' == '.dll' " Update="%(ResolvedFileToPublish.Identity)" RelativePath="Plugins\%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)" />
     </ItemGroup>
   </Target>

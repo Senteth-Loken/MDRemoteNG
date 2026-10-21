@@ -41,6 +41,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MDRemoteNG.Desktop", "MDRem
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MDRemoteNG.Desktop.Tests", "MDRemoteNG.Desktop.Tests\MDRemoteNG.Desktop.Tests.csproj", "{4FA8770E-B7AB-4AC7-834C-58697106DB8A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VncSharpCore", "External\VncSharpCore\VncSharpCore.csproj", "{C5C6EAB8-9956-4271-8F58-630914CDB253}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MDRemoteNG.Vnc.Tests", "MDRemoteNG.Vnc.Tests\MDRemoteNG.Vnc.Tests.csproj", "{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|arm64 = Debug|arm64
@@ -273,6 +277,30 @@ Global
 		{4FA8770E-B7AB-4AC7-834C-58697106DB8A}.Release Self-Contained|arm64.Build.0 = Release|Any CPU
 		{4FA8770E-B7AB-4AC7-834C-58697106DB8A}.Release Self-Contained|x64.ActiveCfg = Release|Any CPU
 		{4FA8770E-B7AB-4AC7-834C-58697106DB8A}.Release Self-Contained|x64.Build.0 = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Debug|arm64.ActiveCfg = Debug|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Debug|arm64.Build.0 = Debug|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Debug|x64.Build.0 = Debug|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release|arm64.ActiveCfg = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release|arm64.Build.0 = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release|x64.ActiveCfg = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release|x64.Build.0 = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release Self-Contained|arm64.ActiveCfg = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release Self-Contained|arm64.Build.0 = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release Self-Contained|x64.ActiveCfg = Release|Any CPU
+		{C5C6EAB8-9956-4271-8F58-630914CDB253}.Release Self-Contained|x64.Build.0 = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Debug|arm64.ActiveCfg = Debug|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Debug|arm64.Build.0 = Debug|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Debug|x64.Build.0 = Debug|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release|arm64.ActiveCfg = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release|arm64.Build.0 = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release|x64.ActiveCfg = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release|x64.Build.0 = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release Self-Contained|arm64.ActiveCfg = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release Self-Contained|arm64.Build.0 = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release Self-Contained|x64.ActiveCfg = Release|Any CPU
+		{5BEE322F-72F1-4D9E-8F82-DFD3DFBD7FC1}.Release Self-Contained|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

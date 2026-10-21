@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>Library</OutputType>
+    <AssemblyName>VncSharpCore</AssemblyName>
+    <RootNamespace>VncSharpCore</RootNamespace>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>VncSharpKey.snk</AssemblyOriginatorKeyFile>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);Win32</DefineConstants>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Keep the pinned implementation unchanged: legacy CAS/serialization metadata,
+         RFB's DES provider and designer-only property metadata produce .NET 10 diagnostics. -->
+    <NoWarn>$(NoWarn);SYSLIB0003;SYSLIB0021;SYSLIB0051;WFO1000</NoWarn>
+    <PackageLicenseExpression>GPL-2.0-only</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/mRemoteNG/VncSharpCore</RepositoryUrl>
+    <RepositoryCommit>dc87ba02b0090331d1956cd4a6ba0168ecd301d6</RepositoryCommit>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\screenshot.png" LogicalName="VncSharpCore.Resources.screenshot.png" />
+    <EmbeddedResource Include="Resources\vnccursor.cur" LogicalName="VncSharpCore.Resources.vnccursor.cur" />
+    <None Update="COPYING.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="Licenses\VncSharpCore-GPL-2.0.txt" />
+    <None Update="zlib.NET\license.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="Licenses\VncSharpCore-zlib.txt" />
+    <None Update="PROVENANCE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="Licenses\VncSharpCore-provenance.txt" />
+  </ItemGroup>
+</Project>
