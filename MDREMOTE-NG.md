@@ -111,17 +111,13 @@ The viewer correction additionally passes 17 checks using the actual Windows For
 
 VNC performance changes coalesce dirty tiles into at most 64 rectangles, batch
 framebuffer output into 64 KiB writes, disable TCP delay and negotiate Zlib
-compression. Small changes retain partial updates; large changes use a combined
-region. The eight-updates-per-second capture limit remains. Update both the
-viewer and the sharing computer's helper for the full improvement; the new
-viewer can also negotiate compression with the earlier embedded helper.
+compression. The current helper and viewer use persistent native zlib streams
+with bounded buffers. Capture pacing now targets up to 60 updates per second,
+with one-shot deadlines, request coalescing and adaptive capture/scan work limits.
+Update both the viewer and the sharing computer's helper for these changes.
 
-Synthetic full-frame readiness measurements, excluding synthetic image
-generation, improved from 991 ms to 110 ms at 1920x1080 and from 1,797 ms to
-117 ms at 2560x1440 with both ends updated. Measured RFB payloads fell about
-90%. With only the viewer updated, the corresponding results were 439 ms and
-644 ms. These loopback measurements are not a real-network frame-rate guarantee.
-The performance changes pass 60 actual-viewer/decoder checks and 50 synthetic
-desktop/TLS checks, including cropped requests, cache changes, bounded output,
-partial reads and malformed continuous compressed streams. Tests use synthetic
-pixels and do not capture a real desktop or send Windows input.
+See [the VNC performance notes](MDRemoteNG.Vnc.Performance.md) for the fixed
+1.78.5 baseline, real 4K CONDOR refresh measurements, compatibility checks,
+measurement boundaries and reproducible paired benchmarks. The 70% latency goal
+requires complete-path measurements against the shipped 1.78.5 version, including
+continuous visible-frame age; isolated codec timing is diagnostic evidence.

@@ -16,6 +16,8 @@ jobs:
       - run: dotnet run --project MDRemoteNG.Host.Tests -c Release
       - run: dotnet run --project MDRemoteNG.Desktop.Tests -c Release
       - run: dotnet run --project MDRemoteNG.Vnc.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Vnc.Tests -c Release -- --strict
+      - run: dotnet run --project MDRemoteNG.Vnc.Benchmarks -c Release -- --self-test
       - run: dotnet run --project MDRemoteNG.UI.Tests -c Release
       - run: dotnet run --project MDRemoteNG.Defaults.Tests -c Release
   desktop-startup:

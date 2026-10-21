@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -23,9 +24,11 @@ public sealed class VncSharingHost : IAsyncDisposable
     private readonly ConcurrentDictionary<int, Task> _sessions = new();
     private readonly ConcurrentDictionary<string, (int Count, DateTimeOffset Next)> _failures = new();
     private Task? _accept;
+    private VncFramePacing? _activePacing;
     private int _next;
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public bool IsHealthy => _accept is { IsCompleted: false };
+    internal double TargetUpdateRate => Volatile.Read(ref _activePacing)?.TargetRate ?? 0;
 
     public VncSharingHost(VncHostSettings settings, SharedConnection endpoint, Func<IPAddress, bool> allowed,
         Func<IVncDesktopSession>? desktopFactory = null, IPAddress? listenAddress = null)
@@ -94,9 +97,12 @@ public sealed class VncSharingHost : IAsyncDisposable
                 // Screen/input objects are created only after pinned TLS and the full random token authenticate.
                 using IVncDesktopSession desktop = _desktopFactory();
                 using var output = new FramebufferWriteStream(secure);
-                var updates = new FramebufferUpdateBatcher();
+                var pacing = new VncFramePacing();
+                Volatile.Write(ref _activePacing, pacing);
                 var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                var session = new VncServerSession { MaxUpdateRate = 8 };
+                var session = new VncServerSession { MaxUpdateRate = VncFramePacing.LibraryPollingRate };
+                using var clock = new VncCaptureClock(pacing, _stop.Token, session.FramebufferChanged);
+                var updates = new FramebufferUpdateBatcher(pacing, clock);
                 session.PasswordProvided += (_, args) => args.Accept(_endpoint.Password.ToCharArray());
                 session.KeyChanged += (_, args) => SafeInput(() => desktop.KeyChanged(args), client);
                 session.PointerChanged += (_, args) => SafeInput(() => desktop.PointerChanged(args), client);
@@ -104,14 +110,17 @@ public sealed class VncSharingHost : IAsyncDisposable
                 session.ConnectionFailed += (_, _) => closed.TrySetResult();
                 session.FramebufferUpdating += (_, args) =>
                 {
-                    try { updates.Send(session, args, output); }
+                    try
+                    {
+                        updates.Send(session, args, output);
+                    }
                     catch (Exception)
                     {
                         client.Dispose();
                         throw;
                     }
                 };
-                session.SetFramebufferSource(new ClosingFramebufferSource(desktop, client));
+                session.SetFramebufferSource(new ClosingFramebufferSource(desktop, client, pacing, clock));
                 using var cancel = _stop.Token.Register(() => client.Dispose());
                 session.Connect(output, new VncServerSessionOptions { AuthenticationMethod = AuthenticationMethod.Password });
                 try { await closed.Task.WaitAsync(_stop.Token).ConfigureAwait(false); }
@@ -139,7 +148,11 @@ public sealed class VncSharingHost : IAsyncDisposable
         finally
         {
             client.Dispose();
-            if (desktopSlot) _desktop.Release();
+            if (desktopSlot)
+            {
+                Volatile.Write(ref _activePacing, null);
+                _desktop.Release();
+            }
             _handshakes.Release();
         }
     }
@@ -156,17 +169,29 @@ public sealed class VncSharingHost : IAsyncDisposable
         _desktop.Dispose();
     }
 
-    private sealed class ClosingFramebufferSource(IVncDesktopSession desktop, TcpClient client) : IVncFramebufferSource
+    private sealed class ClosingFramebufferSource(IVncDesktopSession desktop, TcpClient client, VncFramePacing pacing,
+        VncCaptureClock clock) : IVncFramebufferSource
     {
+        private VncFramebuffer? _lastFrame;
         public VncFramebuffer Capture()
         {
-            try { return desktop.Capture(); }
+            long started = 0;
+            try
+            {
+                if (!clock.TryBeginCapture()) return _lastFrame!;
+                started = Stopwatch.GetTimestamp();
+                return _lastFrame = desktop.Capture();
+            }
             catch (Exception exception)
             {
                 client.Dispose();
                 // The RFB library's background receive thread handles IO failures.
                 // Convert display/GDI failures so a locked desktop closes only this session.
                 throw new IOException("The shared Windows desktop became unavailable.", exception);
+            }
+            finally
+            {
+                if (started != 0) pacing.RecordCapture(Stopwatch.GetElapsedTime(started));
             }
         }
     }

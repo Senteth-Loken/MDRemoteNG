@@ -18,9 +18,16 @@ modifications dated 2026-10-21 improve framebuffer decoding:
 
 - `PixelReader`, `PixelReader32`, `RawRectangle` and `Framebuffer` decode Raw
   rectangles in bounded chunks rather than allocating and reading per pixel.
+- `PixelReader32` reads the standard little-endian 32-bit format directly into
+  destination storage and normalizes opaque alpha in vector-sized chunks.
+  `Encodings/EncodedRectangle` copies rows in bulk using the bitmap's actual
+  stride, retaining clipped geometry and the generic pixel-format fallbacks.
 - `ZlibFramebufferDecoder` and `Encodings/ZlibRectangle` add RFB encoding 6,
-  using the existing attributed zlib implementation with connection-wide history,
+  using the public .NET `ZLibStream` API with connection-wide history,
   bounded payload/output sizes, exact pixel counts and cleanup on disconnect.
+  A bounded input stream preserves framed sync-flush boundaries; a guarded tail
+  prevents native read-ahead from hiding trailing compressed bytes. The legacy
+  attributed zlib source remains available to the existing ZRLE decoder.
 - `VncClient`, `RfbProtocol`, `EncodedRectangleFactory` and
   `Encodings/EncodedRectangle` negotiate and route the compressed encoding.
 

@@ -8,8 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
-    <PackageReference Include="RemoteViewing" />
+    <ProjectReference Include="..\External\RemoteViewing\RemoteViewing.csproj" />
     <PackageReference Include="System.Drawing.Common" />
-    <None Include="ThirdParty\RemoteViewing-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" TargetPath="Licenses\RemoteViewing-LICENSE.txt" />
   </ItemGroup>
 </Project>

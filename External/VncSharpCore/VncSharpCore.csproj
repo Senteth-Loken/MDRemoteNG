@@ -12,8 +12,8 @@
     <DefineConstants>$(DefineConstants);Win32</DefineConstants>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <!-- Keep the pinned implementation unchanged: legacy CAS/serialization metadata,
-         RFB's DES provider and designer-only property metadata produce .NET 10 diagnostics. -->
+    <!-- Retain upstream legacy CAS/serialization metadata, RFB's DES provider and
+         designer-only property metadata while suppressing their .NET 10 diagnostics. -->
     <NoWarn>$(NoWarn);SYSLIB0003;SYSLIB0021;SYSLIB0051;WFO1000</NoWarn>
     <PackageLicenseExpression>GPL-2.0-only</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/mRemoteNG/VncSharpCore</RepositoryUrl>

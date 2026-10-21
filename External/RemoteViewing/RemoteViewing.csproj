@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>RemoteViewing</AssemblyName>
+    <RootNamespace>RemoteViewing</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Preserve the pinned source's legacy zlib names, RFB DES provider and
+         unused diagnostics without modernizing unrelated protocol code. -->
+    <NoWarn>$(NoWarn);SYSLIB0051;SYSLIB0021;SYSLIB0023;CS8981;CS0162;CS0168;CS0169</NoWarn>
+    <PackageLicenseExpression>BSD-2-Clause</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/SeekHisKingdom/RemoteViewing</RepositoryUrl>
+    <RepositoryCommit>0a02982ae23f2bbf1c0da18866d256304e0e2f86</RepositoryCommit>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="Licenses\RemoteViewing-LICENSE.txt" />
+    <None Update="PROVENANCE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="Licenses\RemoteViewing-provenance.txt" />
+  </ItemGroup>
+</Project>

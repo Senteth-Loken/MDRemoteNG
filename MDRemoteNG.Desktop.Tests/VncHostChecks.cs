@@ -42,6 +42,40 @@ internal static class VncHostChecks
 
         await using (var fixture = Fixture.Create(settings, fingerprint, password))
         {
+            await Task.Delay(100);
+            Check(fixture.Created.Count == 0, "An unconnected host performs no desktop construction or capture polling.");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            using var client = await ConnectAsync(fixture.Host.Port, timeout.Token);
+            using var stream = new SslStream(client.GetStream(), false);
+            await VncSecurity.AuthenticateClientAsync(stream, "127.0.0.1", fingerprint, password, timeout.Token);
+            if (await AuthenticateRfbAsync(stream, password, timeout.Token) != 0) throw new Exception("Synthetic RFB authentication failed.");
+            await InitializeDesktopAsync(stream, timeout.Token);
+            FakeDesktop desktop = fixture.Created.Single();
+            int initializedCaptures = desktop.Captures;
+            await Task.Delay(100, timeout.Token);
+            Check(desktop.Captures == initializedCaptures,
+                "An authenticated viewer with no pending framebuffer request does not poll desktop pixels.");
+
+            byte[] burst = new byte[1000];
+            for (int index = 0; index < 100; index++)
+            {
+                int offset = index * 10;
+                burst[offset] = 3;
+                BinaryPrimitives.WriteUInt16BigEndian(burst.AsSpan(offset + 6), FakeDesktop.Width);
+                BinaryPrimitives.WriteUInt16BigEndian(burst.AsSpan(offset + 8), FakeDesktop.Height);
+            }
+            await stream.WriteAsync(burst, timeout.Token);
+            await Task.Delay(200, timeout.Token);
+            int afterBurst = desktop.Captures;
+            await Task.Delay(100, timeout.Token);
+            Check(afterBurst > initializedCaptures && afterBurst - initializedCaptures < 16 && desktop.Captures == afterBurst,
+                "A burst of 100 viewer requests coalesces into current work instead of queuing 100 stale captures.");
+            Check(desktop.Keys == 0 && desktop.Pointers == 0,
+                "Responsive capture scheduling does not generate keyboard or pointer input.");
+        }
+
+        await using (var fixture = Fixture.Create(settings, fingerprint, password))
+        {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
             using var client = await ConnectAsync(fixture.Host.Port, timeout.Token);
             await client.GetStream().WriteAsync("RFB 003.008\n"u8.ToArray(), timeout.Token);

@@ -1,12 +1,14 @@
+using System.Diagnostics;
 using RemoteViewing.Vnc;
 using RemoteViewing.Vnc.Server;
 
 namespace MDRemoteNG.Desktop;
 
 /// <summary>Combines adjacent changed tiles before encoding and dispatching them to the viewer.</summary>
-internal sealed class FramebufferUpdateBatcher
+internal sealed class FramebufferUpdateBatcher(VncFramePacing? pacing = null, VncCaptureClock? clock = null)
 {
     private readonly DirtyFramebufferCache _cache = new();
+    private long _lastGeneration;
 
     internal void Send(VncServerSession session, FramebufferUpdatingEventArgs args, FramebufferWriteStream output)
     {
@@ -14,9 +16,14 @@ internal sealed class FramebufferUpdateBatcher
         VncFramebuffer frame = session.Framebuffer;
         FramebufferUpdateRequest? request = session.FramebufferUpdateRequest;
         if (frame == null || request == null) return;
+        long generation = clock?.Generation ?? 0;
+        if (clock != null && generation == _lastGeneration) return;
         lock (frame.SyncRoot)
         {
+            long scanStarted = Stopwatch.GetTimestamp();
             var changes = _cache.FindChanges(frame, request);
+            pacing?.RecordScan(Stopwatch.GetElapsedTime(scanStarted));
+            _lastGeneration = generation;
             output.BeginFrame();
             try
             {
@@ -33,6 +40,7 @@ internal sealed class DirtyFramebufferCache
 {
     private const int TileSize = 16, MaxRectangles = 64, MaxPixels = 16_777_216;
     private int _width, _height;
+    private bool _allKnown;
     private int[] _pixels = [];
     private ulong[] _known = [];
 
@@ -48,6 +56,7 @@ internal sealed class DirtyFramebufferCache
             if (reset)
             {
                 _width = frame.Width; _height = frame.Height;
+                _allKnown = false;
                 _pixels = new int[checked(_width * _height)];
                 _known = new ulong[(_pixels.Length + 63) / 64];
             }
@@ -57,6 +66,7 @@ internal sealed class DirtyFramebufferCache
                 Remember(current, region);
                 return [region];
             }
+            if (_allKnown && IsFullFrame(region) && current.AsSpan().SequenceEqual(_pixels)) return [];
 
             var rectangles = new List<VncRectangle>();
             var previous = new Dictionary<(int X, int Width), int>();
@@ -102,12 +112,23 @@ internal sealed class DirtyFramebufferCache
                 }
                 previous = next;
             }
+            if (_allKnown) Remember(current, region);
+            else if (IsFullFrame(region)) _allKnown = true;
             return collapse ? [bounds] : rectangles;
         }
     }
 
     private bool IsChanged(int[] current, VncRectangle tile)
     {
+        if (_allKnown)
+        {
+            for (int y = tile.Y; y < tile.Y + tile.Height; y++)
+            {
+                int offset = y * _width + tile.X;
+                if (!current.AsSpan(offset, tile.Width).SequenceEqual(_pixels.AsSpan(offset, tile.Width))) return true;
+            }
+            return false;
+        }
         bool changed = false;
         for (int y = tile.Y; y < tile.Y + tile.Height; y++)
         {
@@ -122,14 +143,25 @@ internal sealed class DirtyFramebufferCache
 
     private void Remember(int[] current, VncRectangle region)
     {
+        if (IsFullFrame(region))
+        {
+            current.AsSpan().CopyTo(_pixels);
+            Array.Fill(_known, ulong.MaxValue);
+            _allKnown = true;
+            return;
+        }
         for (int y = region.Y; y < region.Y + region.Height; y++)
         {
             int offset = y * _width + region.X;
             current.AsSpan(offset, region.Width).CopyTo(_pixels.AsSpan(offset, region.Width));
-            for (int x = 0; x < region.Width; x += TileSize)
-                MarkKnown(offset + x, Math.Min(TileSize, region.Width - x));
+            if (!_allKnown)
+                for (int x = 0; x < region.Width; x += TileSize)
+                    MarkKnown(offset + x, Math.Min(TileSize, region.Width - x));
         }
     }
+
+    private bool IsFullFrame(VncRectangle region) =>
+        region.X == 0 && region.Y == 0 && region.Width == _width && region.Height == _height;
 
     private bool IsKnown(int offset, int count)
     {

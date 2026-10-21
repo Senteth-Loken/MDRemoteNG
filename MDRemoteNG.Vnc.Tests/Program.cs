@@ -16,8 +16,10 @@ internal static class Program
     private static int _passed;
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args.Contains("--strict", StringComparer.Ordinal))
+            AppContext.SetSwitch("System.IO.Compression.UseStrictValidation", true);
         if (!OperatingSystem.IsWindows())
         {
             Console.Error.WriteLine("The real VNC control checks require Windows.");
@@ -36,7 +38,10 @@ internal static class Program
         {
             CheckViewerResources();
             _passed += PixelDecodingChecks.Run();
+            _passed += PixelTransferChecks.Run();
             _passed += ZlibDecodingChecks.Run();
+            _passed += ZlibNativeDecodingChecks.Run();
+            _passed += ServerCompressionChecks.Run();
             CheckRealViewerLifecycle();
             foreach (string rejection in new[] { "certificate pin", "sharing token", "RFB password" })
                 CheckAuthenticationRejection(rejection);
