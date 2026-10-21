@@ -35,6 +35,8 @@ internal static class Program
         try
         {
             CheckViewerResources();
+            _passed += PixelDecodingChecks.Run();
+            _passed += ZlibDecodingChecks.Run();
             CheckRealViewerLifecycle();
             foreach (string rejection in new[] { "certificate pin", "sharing token", "RFB password" })
                 CheckAuthenticationRejection(rejection);

@@ -13,7 +13,21 @@ published 1.2.1 package omits that cursor, so `RemoteDesktop.SetState(Connected)
 passes a missing resource stream to the Windows Forms cursor constructor and
 fails after VNC authentication.
 
-The upstream C# sources, resources and published signing key are unchanged.
+The upstream resources and published signing key are unchanged. Local C#
+modifications dated 2026-10-21 improve framebuffer decoding:
+
+- `PixelReader`, `PixelReader32`, `RawRectangle` and `Framebuffer` decode Raw
+  rectangles in bounded chunks rather than allocating and reading per pixel.
+- `ZlibFramebufferDecoder` and `Encodings/ZlibRectangle` add RFB encoding 6,
+  using the existing attributed zlib implementation with connection-wide history,
+  bounded payload/output sizes, exact pixel counts and cleanup on disconnect.
+- `VncClient`, `RfbProtocol`, `EncodedRectangleFactory` and
+  `Encodings/EncodedRectangle` negotiate and route the compressed encoding.
+
+Modified files carry dated notices. Synthetic decoder tests cover fragmented
+reads, pixel formats, continuous compression history and malformed payloads;
+hidden real-viewer checks exercise the TLS tunnel and rendering lifecycle.
+
 `VncSharpCore.csproj` is a local build definition targeting `net10.0-windows`.
 It explicitly embeds the screenshot and restored cursor as
 `VncSharpCore.Resources.screenshot.png` and
@@ -26,8 +40,9 @@ metadata. The signing key is already public in the upstream source repository.
 the .NET 10 analyzer. The project suppresses only the pinned source's obsolete
 CAS attributes (`SYSLIB0003`), RFB DES-provider construction (`SYSLIB0021`), legacy
 exception serialization constructor (`SYSLIB0051`) and designer-only property
-serialization diagnostic (`WFO1000`). No protocol, authentication, cursor or
-input behavior was changed locally.
+serialization diagnostic (`WFO1000`). Authentication, cursor and input behavior
+remain those of the pinned upstream source; compression negotiation and
+framebuffer decoding include the local modifications described above.
 
 The downloaded commit archive's SHA-256 is
 `217e2783ef78075aa8b9cc0ede084f6cdca3688c4d4e339dc612bdc1eabcd9b6`.

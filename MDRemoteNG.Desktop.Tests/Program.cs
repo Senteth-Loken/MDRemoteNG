@@ -101,4 +101,5 @@ Check(Marshal.OffsetOf(mouseType, "Extra").ToInt32() == (IntPtr.Size == 8 ? 24 :
     "Mouse and keyboard native pointer fields retain their correct alignment.");
 
 passed += await VncHostChecks.RunAsync(configured.Settings, configured.Fingerprint, configured.Password);
+passed += await VncPerformanceChecks.RunAsync();
 Console.WriteLine($"All {passed} synthetic desktop and loopback TLS checks passed. No real desktop was captured and no Windows input was sent.");

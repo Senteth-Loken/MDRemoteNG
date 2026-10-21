@@ -38,7 +38,7 @@ The sharing checkbox applies to the selected protocol. Uncheck it and Save to re
 
 The embedded server uses [RemoteViewing 1.1.0](https://github.com/SeekHisKingdom/RemoteViewing), with its BSD two-clause license shipped at `Licenses/RemoteViewing-LICENSE.txt`. SSH uses Microsoft's [installation](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) and [configuration](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-server-configuration) interfaces.
 
-The viewer builds from the official [VncSharpCore cursor fix](https://github.com/mRemoteNG/VncSharpCore/commit/dc87ba02b0090331d1956cd4a6ba0168ecd301d6), pinned under `External/VncSharpCore`. NuGet 1.2.1 omitted the cursor resource and threw `Value cannot be null (stream)` after authentication. The source build restores that resource and retains the original assembly identity and protocol implementation. Its GPL, compression license and provenance ship under `Licenses/`; the source and modification notes remain in the repository.
+The viewer builds from the official [VncSharpCore cursor fix](https://github.com/mRemoteNG/VncSharpCore/commit/dc87ba02b0090331d1956cd4a6ba0168ecd301d6), pinned under `External/VncSharpCore`. NuGet 1.2.1 omitted the cursor resource and threw `Value cannot be null (stream)` after authentication. The source build restores that resource and retains the original assembly identity. Local changes add bounded bulk pixel reads and continuous Zlib compression decoding. Its GPL, compression license and provenance ship under `Licenses/`; the source and modification notes remain in the repository.
 
 ## Network requirements
 
@@ -108,3 +108,20 @@ The x64 desktop build and full self-contained publish succeeded, and all 339 foc
 Startup failures now display an error without constructing the main window before unlock. Details are recorded in `%LOCALAPPDATA%\MDRemoteNG\startup-error.log`.
 
 The viewer correction additionally passes 17 checks using the actual Windows Forms control over the pinned TLS tunnel. They verify the embedded cursor, password authentication, all decoded synthetic pixels, repeated reconnects with the same control, capture-loss cleanup and rejection of incorrect certificate pins, sharing tokens and RFB passwords. These checks use hidden, view-only controls and a synthetic desktop; they do not show windows, capture a real screen, access the clipboard or send Windows input.
+
+VNC performance changes coalesce dirty tiles into at most 64 rectangles, batch
+framebuffer output into 64 KiB writes, disable TCP delay and negotiate Zlib
+compression. Small changes retain partial updates; large changes use a combined
+region. The eight-updates-per-second capture limit remains. Update both the
+viewer and the sharing computer's helper for the full improvement; the new
+viewer can also negotiate compression with the earlier embedded helper.
+
+Synthetic full-frame readiness measurements, excluding synthetic image
+generation, improved from 991 ms to 110 ms at 1920x1080 and from 1,797 ms to
+117 ms at 2560x1440 with both ends updated. Measured RFB payloads fell about
+90%. With only the viewer updated, the corresponding results were 439 ms and
+644 ms. These loopback measurements are not a real-network frame-rate guarantee.
+The performance changes pass 60 actual-viewer/decoder checks and 50 synthetic
+desktop/TLS checks, including cropped requests, cache changes, bounded output,
+partial reads and malformed continuous compressed streams. Tests use synthetic
+pixels and do not capture a real desktop or send Windows input.

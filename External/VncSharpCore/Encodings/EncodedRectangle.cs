@@ -38,7 +38,9 @@ namespace VncSharpCore.Encodings
 			this.rectangle = rectangle;
 
 			//Select appropriate reader
-			var reader = encoding == RfbProtocol.ZRLE_ENCODING ? rfb.ZrleReader : rfb.Reader;
+            // MDRemoteNG modification (2026-10-21): Zlib contains full-width pixel values.
+			var reader = encoding == RfbProtocol.ZRLE_ENCODING ? rfb.ZrleReader :
+                encoding == RfbProtocol.ZLIB_ENCODING ? rfb.ZlibReader.Reader : rfb.Reader;
 
 			// Create the appropriate PixelReader depending on screen size and encoding
 			switch (framebuffer.BitsPerPixel)

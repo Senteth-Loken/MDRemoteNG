@@ -16,6 +16,7 @@
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 using System.Drawing;
+using System.IO;
 
 namespace VncSharpCore.Encodings
 {
@@ -31,10 +32,13 @@ namespace VncSharpCore.Encodings
 
 		public override void Decode()
 		{
-			// Each pixel from the remote server represents a pixel to be drawn
-			for (var i = 0; i < rectangle.Width * rectangle.Height; ++i) {
-				framebuffer[i] = preader.ReadPixel();
-			}
+            // MDRemoteNG modification (2026-10-21): validate before the unsafe drawing
+            // path and decode in blocks rather than one network read per pixel.
+            if (rectangle.X < 0 || rectangle.Y < 0 || rectangle.Width < 0 || rectangle.Height < 0 ||
+                rectangle.X > framebuffer.Width || rectangle.Y > framebuffer.Height ||
+                rectangle.Width > framebuffer.Width - rectangle.X || rectangle.Height > framebuffer.Height - rectangle.Y)
+                throw new InvalidDataException("The Raw VNC rectangle is outside the framebuffer.");
+            preader.ReadPixels(framebuffer.Pixels, 0, checked(rectangle.Width * rectangle.Height));
 		}
 	}
 }

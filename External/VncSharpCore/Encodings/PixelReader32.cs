@@ -16,6 +16,9 @@
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 using System.IO;
+using System;
+using System.Buffers;
+using System.Buffers.Binary;
 
 namespace VncSharpCore.Encodings
 {
@@ -24,6 +27,9 @@ namespace VncSharpCore.Encodings
 	/// </summary>
 	public sealed class PixelReader32 : PixelReader
 	{
+        // MDRemoteNG modification (2026-10-21): reuse small reads and decode Raw
+        // frames in bounded chunks, without an allocation/socket read for every pixel.
+        private readonly byte[] pixelBytes = new byte[4];
 		public PixelReader32(BinaryReader reader, Framebuffer framebuffer) : base(reader, framebuffer)
 		{
 		}
@@ -31,7 +37,8 @@ namespace VncSharpCore.Encodings
 		public override int ReadPixel()
 		{
 			// Read the pixel value
-			var b = reader.ReadBytes(4);
+			var b = pixelBytes;
+            reader.BaseStream.ReadExactly(b);
 
             var pixel = (uint)b[0] & 0xFF | 
                          (uint)b[1] << 8   | 
@@ -45,5 +52,37 @@ namespace VncSharpCore.Encodings
 
 			return ToGdiPlusOrder(red, green, blue);			
 		}
+
+        public override void ReadPixels(int[] pixels, int offset, int count)
+        {
+            ArgumentNullException.ThrowIfNull(pixels);
+            if (offset < 0 || count < 0 || offset > pixels.Length - count)
+                throw new ArgumentOutOfRangeException(nameof(count));
+            if (count == 0) return;
+
+            const int maximumPixels = 16 * 1024;
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Min(count, maximumPixels) * 4);
+            try
+            {
+                int redShift = framebuffer.RedShift, greenShift = framebuffer.GreenShift, blueShift = framebuffer.BlueShift;
+                uint redMax = (uint)framebuffer.RedMax, greenMax = (uint)framebuffer.GreenMax, blueMax = (uint)framebuffer.BlueMax;
+                bool direct = redShift == 16 && greenShift == 8 && blueShift == 0 && redMax == 255 && greenMax == 255 && blueMax == 255;
+                while (count > 0)
+                {
+                    int blockPixels = Math.Min(count, maximumPixels);
+                    reader.BaseStream.ReadExactly(buffer.AsSpan(0, blockPixels * 4));
+                    for (int index = 0; index < blockPixels; index++)
+                    {
+                        uint pixel = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(index * 4, 4));
+                        pixels[offset + index] = direct ? (int)(pixel | 0xFF000000u) :
+                            ToGdiPlusOrder((byte)((pixel >> redShift) & redMax),
+                                (byte)((pixel >> greenShift) & greenMax), (byte)((pixel >> blueShift) & blueMax));
+                    }
+                    offset += blockPixels;
+                    count -= blockPixels;
+                }
+            }
+            finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
+        }
 	}
 }

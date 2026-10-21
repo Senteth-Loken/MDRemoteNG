@@ -1,3 +1,4 @@
+// MDRemoteNG modification (2026-10-21): prefer the helper's standard Zlib encoding.
 // VncSharp - .NET VNC Client Library
 // Copyright (C) 2008 David Humphrey
 //
@@ -303,7 +304,7 @@ namespace VncSharpCore
 			rfb.WriteClientInitialisation(true);  // Allow the desktop to be shared
 			Framebuffer = rfb.ReadServerInit(bitsPerPixel, depth);
 
-			rfb.WriteSetEncodings(new uint[] {	RfbProtocol.ZRLE_ENCODING,
+			rfb.WriteSetEncodings(new uint[] {	RfbProtocol.ZLIB_ENCODING, RfbProtocol.ZRLE_ENCODING,
 			                                    RfbProtocol.HEXTILE_ENCODING, 
 											//	RfbProtocol.CORRE_ENCODING, // CoRRE is buggy in some hosts, so don't bother using
 												RfbProtocol.RRE_ENCODING,

@@ -55,6 +55,7 @@ public sealed class VncSharingHost : IAsyncDisposable
             while (!_stop.IsCancellationRequested)
             {
                 TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                client.NoDelay = true;
                 IPAddress? address = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
                 if (address == null || !_allowed(address) ||
                     (_failures.TryGetValue(address.ToString(), out var failure) && failure.Next > DateTimeOffset.UtcNow) ||
@@ -92,6 +93,8 @@ public sealed class VncSharingHost : IAsyncDisposable
                 desktopSlot = true;
                 // Screen/input objects are created only after pinned TLS and the full random token authenticate.
                 using IVncDesktopSession desktop = _desktopFactory();
+                using var output = new FramebufferWriteStream(secure);
+                var updates = new FramebufferUpdateBatcher();
                 var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 var session = new VncServerSession { MaxUpdateRate = 8 };
                 session.PasswordProvided += (_, args) => args.Accept(_endpoint.Password.ToCharArray());
@@ -99,9 +102,18 @@ public sealed class VncSharingHost : IAsyncDisposable
                 session.PointerChanged += (_, args) => SafeInput(() => desktop.PointerChanged(args), client);
                 session.Closed += (_, _) => closed.TrySetResult();
                 session.ConnectionFailed += (_, _) => closed.TrySetResult();
+                session.FramebufferUpdating += (_, args) =>
+                {
+                    try { updates.Send(session, args, output); }
+                    catch (Exception)
+                    {
+                        client.Dispose();
+                        throw;
+                    }
+                };
                 session.SetFramebufferSource(new ClosingFramebufferSource(desktop, client));
                 using var cancel = _stop.Token.Register(() => client.Dispose());
-                session.Connect(secure, new VncServerSessionOptions { AuthenticationMethod = AuthenticationMethod.Password });
+                session.Connect(output, new VncServerSessionOptions { AuthenticationMethod = AuthenticationMethod.Password });
                 try { await closed.Task.WaitAsync(_stop.Token).ConfigureAwait(false); }
                 finally
                 {

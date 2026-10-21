@@ -16,6 +16,7 @@
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 using System.IO;
+using System;
 
 namespace VncSharpCore.Encodings
 {
@@ -35,6 +36,16 @@ namespace VncSharpCore.Encodings
 		}
 
 		public abstract int ReadPixel();
+
+        // MDRemoteNG modification (2026-10-21): preserve other pixel formats while
+        // allowing 32-bit Raw rectangles to read whole blocks instead of individual pixels.
+        public virtual void ReadPixels(int[] pixels, int offset, int count)
+        {
+            ArgumentNullException.ThrowIfNull(pixels);
+            if (offset < 0 || count < 0 || offset > pixels.Length - count)
+                throw new ArgumentOutOfRangeException(nameof(count));
+            for (int index = 0; index < count; index++) pixels[offset + index] = ReadPixel();
+        }
 
 		protected int ToGdiPlusOrder(byte red, byte green, byte blue)
 		{

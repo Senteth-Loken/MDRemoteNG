@@ -32,6 +32,9 @@ namespace VncSharpCore
 	    private readonly int[] pixels;   // I'm reusing the same pixel buffer for all update rectangles.
                                          // Pixel values will always be 32-bits to match GDI representation
 
+        // MDRemoteNG modification (2026-10-21): allow bounded bulk rectangle decoding.
+        internal int[] Pixels => pixels;
+
 
         /// <summary>
         /// Creates a new Framebuffer with (width x height) pixels.

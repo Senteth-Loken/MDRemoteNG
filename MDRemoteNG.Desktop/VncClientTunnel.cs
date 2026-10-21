@@ -29,8 +29,9 @@ public sealed class VncClientTunnel : IDisposable
             using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
             connectTimeout.CancelAfter(TimeSpan.FromSeconds(20));
             _local = await _listener.AcceptTcpClientAsync(connectTimeout.Token).ConfigureAwait(false);
+            _local.NoDelay = true;
             _listener.Stop(); // Exactly one embedded client uses this ephemeral loopback endpoint.
-            _remote = new TcpClient();
+            _remote = new TcpClient { NoDelay = true };
             await _remote.ConnectAsync(address, port, connectTimeout.Token).ConfigureAwait(false);
             using var secure = new SslStream(_remote.GetStream(), false);
             await VncSecurity.AuthenticateClientAsync(secure, address, fingerprint, password, connectTimeout.Token).ConfigureAwait(false);

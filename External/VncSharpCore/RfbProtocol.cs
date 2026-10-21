@@ -50,6 +50,8 @@ namespace VncSharpCore
 		public const int CORRE_ENCODING					= 4;
 		public const int HEXTILE_ENCODING 				= 5;
 		public const int ZRLE_ENCODING 					= 16;
+        // MDRemoteNG modification (2026-10-21): negotiate the helper's compressed format.
+        public const int ZLIB_ENCODING = 6;
 
 		// Server to Client Message-Type constants
 		public const int FRAMEBUFFER_UPDATE 			= 0;
@@ -145,6 +147,7 @@ namespace VncSharpCore
 		public BinaryReader Reader { get; private set; }
 
 		public ZRLECompressedReader ZrleReader { get; private set; }
+        public ZlibFramebufferDecoder ZlibReader { get; private set; }
 
 	    /// <summary>
 		/// Attempt to connect to a remote VNC Host.
@@ -173,6 +176,7 @@ namespace VncSharpCore
 			Reader = new BigEndianBinaryReader(stream);
 			writer = new BigEndianBinaryWriter(stream);
 			ZrleReader = new ZRLECompressedReader(stream);
+            ZlibReader = new ZlibFramebufferDecoder();
 		}
 
 		/// <summary>
@@ -188,6 +192,7 @@ namespace VncSharpCore
 			} catch (Exception ex) {
 				Debug.Fail(ex.Message);
 			}
+            finally { ZlibReader?.Dispose(); }
 		}
 		
 		/// <summary>

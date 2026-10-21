@@ -54,6 +54,10 @@ namespace VncSharpCore
 			EncodedRectangle e;
 
 			switch (encoding) {
+                // MDRemoteNG modification (2026-10-21): compressed framebuffer updates.
+                case RfbProtocol.ZLIB_ENCODING:
+                    e = new ZlibRectangle(rfb, framebuffer, rectangle);
+                    break;
 				case RfbProtocol.RAW_ENCODING:
 					e = new RawRectangle(rfb, framebuffer, rectangle);
 					break;
