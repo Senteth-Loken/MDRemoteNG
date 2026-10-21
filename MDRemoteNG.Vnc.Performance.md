@@ -114,9 +114,24 @@ enabled. A root build property now enables optimizations for this release
 configuration across projects. The first installer is superseded; its failed
 results remain recorded. The corrected installer must be measured separately.
 
-The 70% goal remains unmet until the corrected packaged build and CONDOR pass
-their fixed thresholds. Final acceptance requires installing the updated host
-and viewer and repeating the live probe against the fixed real baseline above.
+The corrected installer enables optimizations in all 11 inspected application
+and helper assemblies. Its exact helper/viewer files were measured under the
+bundled runtime without changing the harness or fixed baselines:
+
+| Profile | Metric | Optimized package p50 / p95 | Reduction |
+| --- | --- | ---: | ---: |
+| Loopback | Idle patch | 28.24 / 59.94 ms | 72.66% / 64.46% |
+| Loopback | Full frame | 114.54 / 184.57 ms | 74.37% / 67.95% |
+| Loopback | Visible-frame age | 146.48 / 194.95 ms | 75.59% / 76.00% |
+| Simulated LAN | Idle patch | 29.84 / 60.20 ms | 75.05% / 66.94% |
+| Simulated LAN | Full frame | 119.73 / 157.38 ms | 72.81% / 74.00% |
+| Simulated LAN | Visible-frame age | 160.31 / 215.51 ms | 74.31% / 73.82% |
+
+The optimized package passes five of six LAN gates and four of six loopback
+gates. Its patch p95 in both profiles and loopback full-frame p95 still miss
+the threshold. The 70% goal remains unmet. Final acceptance also requires
+installing the updated host and viewer and repeating the live probe against
+the fixed real CONDOR baseline above.
 
 The intended source passes 70 helper/TLS/cache checks and 102 actual viewer,
 codec and pixel-transfer checks, with the latter repeated under strict zlib
