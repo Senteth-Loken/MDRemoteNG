@@ -1,3 +1,9 @@
+# MDRemoteNG
+
+MDRemoteNG is a fork of [mRemoteNG](https://github.com/mremoteng/mremoteng) with a mandatory startup PIN, authenticated local network discovery, and automatic connections between matching PIN holders. See [setup, build and security details](MDREMOTE-NG.md).
+
+The upstream project information follows.
+
 <p align="Left">
 	Developing mRemoteNG to its fullest potential is my personal priority.<br>
 While the project remains non-commercial, it does come with ongoing costs — including VPS hosting for testing, AI tools, domain fees, and more. <br> If you find value in mRemoteNG and want to support its future, even a small donation from our community can make a huge difference.<br>

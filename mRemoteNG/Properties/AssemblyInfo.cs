@@ -10,20 +10,20 @@ using System.Resources;
 
 // Compute version values
 
-//Build nr: 3735
+//Build nr: 3752
 
 // General Information
-[assembly: AssemblyTitle("mRemoteNG")]
-[assembly: AssemblyDescription("Multi-Remote Next Generation Connection Manager")]
+[assembly: AssemblyTitle("MDRemoteNG")]
+[assembly: AssemblyDescription("MDRemoteNG PIN protected remote connections manager")]
 [assembly: AssemblyConfiguration("x64")]
 [assembly: AssemblyCompany("Profi-KOM Ltd.")]
-[assembly: AssemblyProduct("mRemoteNG Connection Manager")]
+[assembly: AssemblyProduct("MDRemoteNG")]
 [assembly: AssemblyCopyright("(c) 2026 mRemoteNG")]
 [assembly: AssemblyTrademark("Profi-KOM LTd.")]
 [assembly: AssemblyCulture("")]
 
 // Version information
-[assembly: AssemblyVersion("1.78.2.3735")]
-[assembly: AssemblyFileVersion("1.78.2.3735")]
+[assembly: AssemblyVersion("1.78.2.3752")]
+[assembly: AssemblyFileVersion("1.78.2.3752")]
 [assembly: NeutralResourcesLanguageAttribute("en-US")]
-[assembly: AssemblyInformationalVersion("1.78.2 (Nightly Build 3735) x64")]
+[assembly: AssemblyInformationalVersion("1.78.2 (Nightly Build 3752) x64")]

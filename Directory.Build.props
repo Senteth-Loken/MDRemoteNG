@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release Self-Contained'">
+    <!-- SDK release defaults apply only to the configuration named Release. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>

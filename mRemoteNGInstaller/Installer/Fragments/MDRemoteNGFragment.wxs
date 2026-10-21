@@ -1,0 +1,32 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <ComponentGroup Id="CG.MDRemoteNG" Directory="INSTALLDIR">
+      <Component Id="C.MDRemoteNGDesktop" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.Desktop.dll" KeyPath="yes" />
+      </Component>
+      <Component Id="C.MDRemoteNGVncLibrary" Guid="*" Directory="dirEA5DE0DA87CCDD60F4B26843B622260F">
+        <File Source="$(var.HarvestPath)\Assemblies\RemoteViewing.dll" KeyPath="yes" />
+      </Component>
+      <Files Include="$(var.HarvestPath)\Licenses\**" Directory="INSTALLDIR" Subdirectory="Licenses" />
+      <Component Id="C.MDRemoteNGHost" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.Host.dll" KeyPath="yes" />
+      </Component>
+      <!-- The desktop process uses these project assemblies beside mRemoteNG.dll. -->
+      <Component Id="C.MDRemoteNGCore" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.Core.dll" KeyPath="yes" />
+      </Component>
+      <Component Id="C.MDRemoteNGDiscoveryClient" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.Discovery.dll" KeyPath="yes" />
+      </Component>
+      <Component Id="C.MDRemoteNGLauncher" Guid="*">
+        <File Source="$(var.HarvestPath)\MDRemoteNG.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="C.MDRemoteNGDependencyManifest" Guid="*">
+        <File Source="$(var.HarvestPath)\mRemoteNG.deps.json" KeyPath="yes" />
+      </Component>
+      <!-- Preserve the helper's own dependency layout, including runtime files for
+           self-contained builds, instead of enumerating a fixed list of DLLs. -->
+      <Files Include="$(var.HarvestPath)\Discovery\**" Directory="INSTALLDIR" Subdirectory="Discovery" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

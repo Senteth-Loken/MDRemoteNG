@@ -21,6 +21,21 @@ namespace mRemoteNG.UI.Panels
         {
             try
             {
+                string panelTitle = string.IsNullOrEmpty(title) ? DefaultPanelName : title;
+                if (string.Equals(panelTitle, DefaultPanelName, StringComparison.OrdinalIgnoreCase))
+                {
+                    ConnectionWindow existingGeneral = Runtime.WindowList?
+                        .OfType<ConnectionWindow>()
+                        .FirstOrDefault(window => !window.IsDisposed &&
+                            string.Equals(window.TabText, DefaultPanelName, StringComparison.OrdinalIgnoreCase));
+                    if (existingGeneral != null)
+                    {
+                        if (showImmediately)
+                            ShowConnectionWindow(existingGeneral);
+                        return existingGeneral;
+                    }
+                }
+
                 ConnectionWindow connectionForm = new(new DockContent());
                 BuildConnectionWindowContextMenu(connectionForm);
                 SetConnectionWindowTitle(title, connectionForm);
@@ -34,14 +49,15 @@ namespace mRemoteNG.UI.Panels
             }
             catch (Exception ex)
             {
-                Runtime.MessageCollector.AddMessage(MessageClass.ErrorMsg, "Couldn\'t add panel" + Environment.NewLine + ex.Message);
+                Runtime.MessageCollector.AddExceptionStackTrace("Couldn't add panel", ex, MessageClass.ErrorMsg, logOnly: false);
                 return null;
             }
         }
 
         public bool DoesPanelExist(string panelName)
         {
-            return Runtime.WindowList?.OfType<ConnectionWindow>().Any(w => w.TabText == panelName)
+            return Runtime.WindowList?.OfType<ConnectionWindow>().Any(w => !w.IsDisposed &&
+                string.Equals(w.TabText, panelName, StringComparison.OrdinalIgnoreCase))
                 ?? false;
         }
 

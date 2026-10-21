@@ -100,6 +100,8 @@ namespace mRemoteNG.App.Update
         
         public async Task DownloadUpdateAsync(IProgress<int> progress)
         {
+            if (!mRemoteNG.Config.Settings.Registry.CommonRegistrySettings.AllowCheckForUpdates)
+                throw new InvalidOperationException("Use the MDRemoteNG repository for updates to this fork.");
             if (IsGetUpdateInfoRunning)
             {
                 _getUpdateInfoCancelToken?.Cancel();
@@ -216,6 +218,8 @@ namespace mRemoteNG.App.Update
 
         public async Task GetUpdateInfoAsync()
         {
+            if (!mRemoteNG.Config.Settings.Registry.CommonRegistrySettings.AllowCheckForUpdates)
+                return;
             if (IsGetUpdateInfoRunning)
             {
                 _getUpdateInfoCancelToken?.Cancel();

@@ -30,7 +30,8 @@ namespace mRemoteNG.Connection
                 System.Reflection.PropertyInfo propertyFromSettings = typeof(TSource).GetProperty(propertyNameMutator(property.Name));
                 if (propertyFromSettings == null)
                 {
-                    Runtime.MessageCollector.AddMessage(Messages.MessageClass.ErrorMsg, $"DefaultConInherit-LoadFrom: Could not load {property.Name}", true);
+                    Runtime.MessageCollector?.AddMessage(Messages.MessageClass.DebugMsg,
+                        $"Default inheritance setting '{propertyNameMutator(property.Name)}' is unavailable; keeping its current default.");
                     continue;
                 }
 
@@ -50,7 +51,8 @@ namespace mRemoteNG.Connection
                 object localValue = property.GetValue(Instance, null);
                 if (propertyFromSettings == null)
                 {
-                    Runtime.MessageCollector?.AddMessage(Messages.MessageClass.ErrorMsg, $"DefaultConInherit-SaveTo: Could not load {property.Name}", true);
+                    Runtime.MessageCollector?.AddMessage(Messages.MessageClass.DebugMsg,
+                        $"Default inheritance setting '{propertyNameMutator(property.Name)}' is unavailable; skipping it.");
                     continue;
                 }
 

@@ -230,8 +230,6 @@ namespace mRemoteNG.UI.Forms
 
             _fpChainedWindowHandle = NativeMethods.SetClipboardViewer(Handle);
 
-            Runtime.WindowList = [];
-
             if (Properties.App.Default.ResetPanels)
                 SetDefaultLayout();
             else
@@ -440,6 +438,8 @@ namespace mRemoteNG.UI.Forms
             // prompt for the profile password before the connection set is loaded.
             ProgramRoot.CloseSplash();
             new CredsAndConsSetup().LoadCredsAndCons();
+
+            InitializeMdDiscovery();
 
             PromptForUpdatesPreference();
             await CheckForUpdates();
@@ -778,7 +778,7 @@ namespace mRemoteNG.UI.Forms
                 return;
             }
 
-            StringBuilder titleBuilder = new(Application.ProductName);
+            StringBuilder titleBuilder = new("MDRemoteNG");
             const string separator = " - ";
 
             if (Runtime.ConnectionsService.IsConnectionsFileLoaded)

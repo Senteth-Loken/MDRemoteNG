@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\mRemoteNG\Connection\DefaultConnectionInfo.cs" Link="Connection\DefaultConnectionInfo.cs" />
+    <Compile Include="..\mRemoteNG\Connection\DefaultConnectionInheritance.cs" Link="Connection\DefaultConnectionInheritance.cs" />
+    <Compile Include="..\mRemoteNG\Connection\Protocol\RDP\RDPDiskDrives.cs" Link="Connection\RDPDiskDrives.cs" />
+  </ItemGroup>
+</Project>

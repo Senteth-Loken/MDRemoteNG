@@ -287,3 +287,9 @@ InstallerProjects/Installer/Resources/License.rtf
 **/mRemoteNG/Properties/AssemblyInfo.tt
 **/mRemoteNG/Properties/AssemblyInfo.cs
 /.cr/personal/FavoritesList
+/.build/
+/.dotnet/
+/.nuget-http/
+/.packages/
+/.ui-validation/
+/.nuget-scratch/

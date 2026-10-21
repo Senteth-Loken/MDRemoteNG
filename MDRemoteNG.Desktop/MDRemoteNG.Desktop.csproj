@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MDRemoteNG.Core\MDRemoteNG.Core.csproj" />
+    <ProjectReference Include="..\External\RemoteViewing\RemoteViewing.csproj" />
+    <PackageReference Include="System.Drawing.Common" />
+  </ItemGroup>
+</Project>

@@ -5,11 +5,12 @@
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">x64</Platform>
     <Configurations>Debug;Release;Release Self-Contained</Configurations>
-    <OutputName>mRemoteNG-Installer</OutputName>
+    <OutputName>MDRemoteNG-Installer</OutputName>
     <OutputType>Package</OutputType>
     <Cultures>en-US</Cultures>
     <SuppressPdbOutput>true</SuppressPdbOutput>
-    <DefineConstants>InstallerSolutionDir=$(MSBuildProjectDirectory)\..\..\;HarvestPath=$(MSBuildProjectDirectory)\..\..\mRemoteNG\bin\x64\$(Configuration)</DefineConstants>
+    <HarvestPath Condition="'$(HarvestPath)' == ''">$(MSBuildProjectDirectory)\..\..\mRemoteNG\bin\$(Platform)\$(Configuration)</HarvestPath>
+    <DefineConstants>InstallerSolutionDir=$(MSBuildProjectDirectory)\..\..\;HarvestPath=$(HarvestPath)</DefineConstants>
     <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\</IntermediateOutputPath>
   </PropertyGroup>
@@ -31,6 +32,11 @@
     <Content Include="Resources\Installer_Header.png" />
     <Content Include="Resources\Installer_Side.png" />
   </ItemGroup>
+
+  <Target Name="ValidateMdDiscoveryPayload" BeforeTargets="CoreCompile">
+    <Error Condition="!Exists('$(HarvestPath)\Discovery\MDRemoteNG.Discovery.exe') Or !Exists('$(HarvestPath)\Discovery\MDRemoteNG.Discovery.runtimeconfig.json') Or !Exists('$(HarvestPath)\Discovery\MDRemoteNG.Discovery.deps.json')"
+           Text="Build the MDRemoteNG desktop project before packaging. Its complete Discovery helper payload is required under $(HarvestPath)\Discovery." />
+  </Target>
 
   <Target Name="RunInstallerPostBuild" AfterTargets="Build" Condition="'$(APPVEYOR_BUILD_FOLDER)' != ''">
     <Exec Command='powershell.exe -ExecutionPolicy Bypass -File "$(InstallerSolutionDir)Tools\postbuild_installer.ps1" -SolutionDir "$(InstallerSolutionDir)\\" -TargetDir "$(TargetDir)" -TargetFileName "mRemoteNG.exe" -ConfigurationName "$(Configuration)" -CertificatePath "$(CertPath)" -CertificatePassword "$(CertPassword)" -ExcludeFromSigning "PuTTYNG.exe"' />

@@ -1,0 +1,33 @@
+name: MDRemoteNG checks
+on:
+  pull_request:
+  push:
+    branches: [feature/mdremoteng-pin-discovery]
+jobs:
+  security-and-discovery:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project MDRemoteNG.Core.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Discovery.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Host.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Desktop.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Vnc.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Vnc.Tests -c Release -- --strict
+      - run: dotnet run --project MDRemoteNG.Vnc.Benchmarks -c Release -- --self-test
+      - run: dotnet run --project MDRemoteNG.UI.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Defaults.Tests -c Release
+  desktop-startup:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - shell: pwsh
+        run: ./Tools/Build-MDRemoteNG.ps1 -Configuration 'Release Self-Contained'
+      - run: dotnet run --project MDRemoteNG.App.Tests -c Release
+      - run: dotnet run --project MDRemoteNG.Connection.Tests -c Release

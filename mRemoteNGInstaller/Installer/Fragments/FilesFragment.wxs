@@ -35,6 +35,7 @@
     </Fragment>
     <Fragment>
         <ComponentGroup Id="MandatoryComponents">
+            <ComponentGroupRef Id="CG.MDRemoteNG" />
             <Component Id="cmpFF3B070182BDDDE8AACCA3CF800537A7" Directory="INSTALLDIR">
                 <File Id="fil071813CC6E65500817D01BDDD73D2B1F" KeyPath="yes" Source="$(var.HarvestPath)\mRemoteNG.dll" />
             </Component>

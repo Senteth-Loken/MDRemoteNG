@@ -1,7 +1,7 @@
 ﻿<Include xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <?define ProductName = "mRemoteNG" ?>
-  <?define Company = "Profi-Kom Ltd." ?>
-  <?define UpgradeCode = "dd678a54-ca75-4791-8dfe-d818095684f8" ?>
+  <?define ProductName = "MDRemoteNG" ?>
+  <?define Company = "MDRemoteNG contributors" ?>
+  <?define UpgradeCode = "1dd1cd99-e2ae-4266-8341-514692a43352" ?>
   <?define ProductCode = "*" ?>
   <?define ProductVersion = "1.78.2.0" ?>
   <?define ProductVersionDisplay = "1.78.2-dev" ?>
