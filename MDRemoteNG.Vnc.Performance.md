@@ -40,7 +40,7 @@ The fixed acceptance threshold is at least 70% reduction in all six synthetic
 metrics: idle-patch p50/p95, full-frame p50/p95, and continuous time-weighted
 visible-frame-age p50/p95. Runs use production capture settings. Loopback,
 1 Gbit/s with 2 ms one-way latency, and a constrained 100 Mbit/s with 8 ms
-one-way latency are reported separately. Serialization and network round trips
+one-way latency are reported separately. Serialization and network latency
 impose lower bounds, so a passing profile does not imply a universal result.
 
 The real 1.78.5 CONDOR baseline, captured on its unlocked 3840×2160 desktop,
@@ -57,15 +57,16 @@ Explicit refresh latency is distinct from spontaneous presentation latency;
 both are needed to assess the change. No probe sends Windows input or accesses
 the clipboard, and real desktop pixels are never written into a report.
 
-## Controlled 4K results
+## Historical source V2 results
 
-Both primary synthetic profiles pass all six 70% gates with the helper and
-viewer updated. These are fresh paired runs of the same compiled harness,
+Both primary synthetic profiles passed all six 70% gates in the optimized
+source V2 development runtime. These historical results precede the installer
+measurements below. They are fresh paired runs of the same compiled harness,
 SHA-256 `63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58`.
 Each run uses 30 idle patches, 20 full frames and 10 seconds of continuous
 production at 30 Hz. Values below are p50 / p95 in milliseconds.
 
-| Profile | Metric | Shipped 1.78.5 | Updated | Reduction |
+| Profile | Metric | Shipped 1.78.5 | Source V2 | Reduction |
 | --- | --- | ---: | ---: | ---: |
 | Loopback | Idle patch | 103.29 / 168.64 | 18.59 / 34.12 | 82.00% / 79.76% |
 | Loopback | Full frame | 446.85 / 575.93 | 95.34 / 109.20 | 78.66% / 81.04% |
@@ -81,12 +82,13 @@ earlier coarse-timer model is excluded from these final comparisons; all final
 baselines and updated runs use the corrected identical harness. This remains
 a software simulation and does not replace the real CONDOR acceptance probe.
 
-The selected release is one complete tested implementation, with all profile
-outcomes retained in `MDRemoteNG.Vnc.Benchmarks/RESULTS-1.78.5.json`. The 1080p
-loopback profile also passes all six gates. The 1080p LAN profile passes three;
-both constrained profiles pass two, missing the full-frame and continuous-age
-goals. At 4K on the constrained profile, those reductions range from 44.62% to
-53.89%. Higher native compression levels saved only 17.5% of fixture bytes and
+The source V2 candidate was selected as one complete tested implementation,
+with all of its original profile outcomes retained in
+`MDRemoteNG.Vnc.Benchmarks/RESULTS-1.78.5.json`. In that source V2 dataset, 1080p
+loopback also passes all six gates, 1080p LAN passes three, and both constrained
+profiles pass two, missing the full-frame and continuous-age goals. At 4K on
+that constrained profile, those reductions range from 44.62% to 53.89%.
+Higher native compression levels saved only 17.5% of fixture bytes and
 added enough codec work to worsen fast-LAN latency, so the release retains the
 fastest setting. These results do not support a universal 70% improvement claim.
 
@@ -127,9 +129,10 @@ bundled runtime without changing the harness or fixed baselines:
 | Simulated LAN | Full frame | 119.73 / 157.38 ms | 72.81% / 74.00% |
 | Simulated LAN | Visible-frame age | 160.31 / 215.51 ms | 74.31% / 73.82% |
 
-The optimized package passes five of six LAN gates and four of six loopback
-gates. Its patch p95 in both profiles and loopback full-frame p95 still miss
-the threshold. The 70% goal remains unmet. Final acceptance also requires
+The optimized 1.78.6 package passes five of six LAN gates and four of six
+loopback gates. Its patch p95 in both profiles and loopback full-frame p95
+still miss the threshold. That package misses the full synthetic target.
+Final acceptance also requires
 installing the updated host and viewer and repeating the live probe against
 the fixed real CONDOR baseline above.
 
@@ -178,8 +181,33 @@ All 872 extracted files match the publish output. The exact helper passes
 desktop/helper codec variants pass 102 checks in default and strict modes.
 Eight startup, 18 connection-file and 13 MSI metadata checks also pass.
 The real CONDOR measurement and interactive confirmation remain required;
-the goal is not yet complete. Other network/workload profiles have not been
-remeasured for 1.78.7, so their earlier misses cannot be reported as resolved.
+the goal is not yet complete. The additional actual-package profiles below
+complete the declared matrix without changing these primary results.
+
+### Actual 1.78.7 secondary profiles
+
+The other four declared profiles were measured once each with the same exact
+1.78.7 self-contained helper and precompiled viewer, frozen harness and original
+fixed 1.78.5 baselines. The 1080p workloads use 60 patches, 40 full frames and
+15 seconds of continuous production; 4K uses 30, 20 and 10 seconds. No rate
+override, selective rerun or substitution of earlier outcomes was used.
+Reductions below are p50 / p95; each quantile has its own 70% gate.
+
+| Actual 1.78.7 profile | Gates passed | Patch reduction | Full-frame reduction | Visible-age reduction | Misses |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1080p loopback | 5/6 | 82.10% / 86.05% | 75.69% / 74.19% | 72.56% / 68.06% | Visible-age p95 |
+| 1080p simulated LAN | 4/6 | 82.03% / 83.24% | 72.47% / 73.38% | 66.22% / 66.28% | Visible-age p50 and p95 |
+| 1080p constrained 100 Mbit/s | 2/6 | 76.38% / 83.13% | 49.53% / 57.31% | 36.99% / 41.66% | Full-frame and visible-age p50/p95 |
+| 4K constrained 100 Mbit/s | 2/6 | 80.29% / 81.62% | 47.46% / 48.67% | 44.39% / 44.60% | Full-frame and visible-age p50/p95 |
+
+These actual-package outcomes are recorded in
+`ReleaseVerification.Final1787Secondary` in the results JSON. The primary 4K
+loopback and LAN datasets remain unchanged. A passing primary scope does not
+support a universal 70% claim across resolutions and networks. At 100 Mbit/s,
+one MiB requires 83.88608 ms of serialization before the modeled 8 ms one-way
+eligibility; recorded byte totals span whole runs and cannot establish exact
+per-frame wire time. Real CONDOR installation/version confirmation and live
+measurement remain pending.
 
 The intended source passes 75 helper/TLS/cache checks and 102 actual viewer,
 codec and pixel-transfer checks, with the latter repeated under strict zlib
