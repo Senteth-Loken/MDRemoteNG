@@ -90,8 +90,33 @@ goals. At 4K on the constrained profile, those reductions range from 44.62% to
 added enough codec work to worsen fast-LAN latency, so the release retains the
 fastest setting. These results do not support a universal 70% improvement claim.
 
-Final acceptance on CONDOR still requires installing the updated host and
-viewer and repeating the live probe against the fixed real baseline above.
+### Installer verification
+
+The first 1.78.6 installer helper assemblies and viewer were also measured
+under its bundled .NET 10.0.1 runtime using the same frozen harness. This
+packaged variant does **not** pass the fixed six-metric target: simulated LAN
+passes zero gates and loopback passes one. These results are retained rather
+than substituting the faster development-runtime results above.
+
+| Profile | Metric | Packaged p50 / p95 | Reduction against fixed 1.78.5 baseline |
+| --- | --- | ---: | ---: |
+| Loopback | Idle patch | 72.90 / 119.07 ms | 29.43% / 29.39% |
+| Loopback | Full frame | 148.73 / 172.06 ms | 66.72% / 70.12% |
+| Loopback | Visible-frame age | 201.10 / 263.22 ms | 66.49% / 67.60% |
+| Simulated LAN | Idle patch | 63.09 / 156.50 ms | 47.25% / 14.05% |
+| Simulated LAN | Full frame | 155.00 / 196.96 ms | 64.81% / 67.46% |
+| Simulated LAN | Visible-frame age | 212.73 / 280.95 ms | 65.91% / 65.88% |
+
+PE metadata subsequently identified a packaging defect: the custom
+`Release Self-Contained` configuration disabled compiler optimizations in
+referenced projects. The passing development assemblies had optimizations
+enabled. A root build property now enables optimizations for this release
+configuration across projects. The first installer is superseded; its failed
+results remain recorded. The corrected installer must be measured separately.
+
+The 70% goal remains unmet until the corrected packaged build and CONDOR pass
+their fixed thresholds. Final acceptance requires installing the updated host
+and viewer and repeating the live probe against the fixed real baseline above.
 
 The intended source passes 70 helper/TLS/cache checks and 102 actual viewer,
 codec and pixel-transfer checks, with the latter repeated under strict zlib

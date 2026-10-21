@@ -1606,7 +1606,371 @@
     }
   ],
   "SelectedCandidate": "Entire V2 candidate-native-v2 variant; no metrics or runs are mixed with V3.",
-  "ReleaseVerification": "Exact packaged-runtime 4K LAN and loopback verification, plus actual CONDOR verification after installation, remain pending.",
+  "ReleaseVerification": {
+    "Status": "The old unoptimized 1.78.6 package failed the primary performance gates. A rebuilt optimized package and actual CONDOR verification remain pending.",
+    "OldUnoptimizedPackage": {
+      "ProductVersion": "1.78.6",
+      "InstallerSHA256": "F3C54B7D55B6C05FA2ADFFDEF32A377B7D9481A37F028B973236BAE21B5F1EFA",
+      "InstallerBytes": 149584076,
+      "ExtractionRoot": "C:\\Project2026\\MDRemoteNG\\.build\\condor-latency-1.78.6-source\\.build\\installer-verification\\28280dae65c54ec7aa44e53808a7c7a7\\Application",
+      "Stage": "Actual extracted Discovery helper Core/Desktop/RemoteViewing for the server, actual main Assemblies/VncSharpCore viewer, and bundled self-contained .NET 10.0.1 runtime. Entry alias MDRemoteNG.Vnc.Tests.dll contains identical frozen benchmark bytes.",
+      "HarnessSHA256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58",
+      "BaselineReuse": "The original fixed final-native-v2 shipped 1.78.5 baseline reports were reused without modification.",
+      "AllPrimaryTargetsPassed": false,
+      "ProfileGateCounts": [
+        {
+          "Profile": "4K LAN",
+          "Passed": 0,
+          "Required": 6
+        },
+        {
+          "Profile": "4K loopback",
+          "Passed": 1,
+          "Required": 6
+        }
+      ],
+      "RuntimeFacts": {
+        "Framework": ".NET 10.0.1",
+        "ServerGC": false,
+        "LibraryMaxUpdateRate": 1000,
+        "PolicyTargetCaptureRate": 60,
+        "InputEvents": 0,
+        "CommonBundledRuntimeHashMatches": 247
+      },
+      "CompilerConfiguration": {
+        "Problem": "The custom PublishSelfContained configuration compiled packaged dependencies with optimizations disabled, unlike the selected Release benchmark.",
+        "SelectedV2DebuggableFlags": 2,
+        "SelectedV2DisableOptimizations": false,
+        "OldPackagedDebuggableFlags": 263,
+        "OldPackagedDisableOptimizations": true,
+        "PerAssemblyEvidence": [
+          {
+            "Stage": "Selected optimized V2 benchmark",
+            "Name": "MDRemoteNG.Core.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-latency\\final-native-v2\\candidate-runtime\\MDRemoteNG.Core.dll",
+            "SHA256": "660EA0DB100B5B5102FB2C73C0FB717207B18292EACCDD12B668EB8C52AFD2B8",
+            "DebuggableFlags": 2,
+            "DisableOptimizations": false
+          },
+          {
+            "Stage": "Old unoptimized MSI helper/main viewer",
+            "Name": "MDRemoteNG.Core.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\condor-latency-1.78.6-source\\.build\\installer-verification\\28280dae65c54ec7aa44e53808a7c7a7\\Application\\Discovery\\MDRemoteNG.Core.dll",
+            "SHA256": "BE0964B9958917FDBC046EF389F3F306ABE1230F0DA1776492FC25FEB8D438C8",
+            "DebuggableFlags": 263,
+            "DisableOptimizations": true
+          },
+          {
+            "Stage": "Selected optimized V2 benchmark",
+            "Name": "MDRemoteNG.Desktop.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-latency\\final-native-v2\\candidate-runtime\\MDRemoteNG.Desktop.dll",
+            "SHA256": "A47AF219D9774EDE25B826F0DB063DEA235D2EEB9D1B84126BA36D780EE0DCEA",
+            "DebuggableFlags": 2,
+            "DisableOptimizations": false
+          },
+          {
+            "Stage": "Old unoptimized MSI helper/main viewer",
+            "Name": "MDRemoteNG.Desktop.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\condor-latency-1.78.6-source\\.build\\installer-verification\\28280dae65c54ec7aa44e53808a7c7a7\\Application\\Discovery\\MDRemoteNG.Desktop.dll",
+            "SHA256": "3E82D30517B0439D1CEB1E2E02C217EAA3D21A9FBD5C816BD61D049A295B62B3",
+            "DebuggableFlags": 263,
+            "DisableOptimizations": true
+          },
+          {
+            "Stage": "Selected optimized V2 benchmark",
+            "Name": "RemoteViewing.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-latency\\final-native-v2\\candidate-runtime\\RemoteViewing.dll",
+            "SHA256": "DFEFD68287EBCC8A89E838ABC8C11EB4F82EE884188D06F1410E6CE856A6CE34",
+            "DebuggableFlags": 2,
+            "DisableOptimizations": false
+          },
+          {
+            "Stage": "Old unoptimized MSI helper/main viewer",
+            "Name": "RemoteViewing.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\condor-latency-1.78.6-source\\.build\\installer-verification\\28280dae65c54ec7aa44e53808a7c7a7\\Application\\Discovery\\RemoteViewing.dll",
+            "SHA256": "9AB47750B041F8FB416B23878366E31CFB1DF64B5516E6FA56F8CBFED6A94941",
+            "DebuggableFlags": 263,
+            "DisableOptimizations": true
+          },
+          {
+            "Stage": "Selected optimized V2 benchmark",
+            "Name": "VncSharpCore.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\vnc-latency\\final-native-v2\\candidate-runtime\\VncSharpCore.dll",
+            "SHA256": "95CF86C4CB412CD904C6D7A0EC2EF035B4656C8AF29B3508D356F38F43F8F472",
+            "DebuggableFlags": 2,
+            "DisableOptimizations": false
+          },
+          {
+            "Stage": "Old unoptimized MSI helper/main viewer",
+            "Name": "VncSharpCore.dll",
+            "Path": "C:\\Project2026\\MDRemoteNG\\.build\\condor-latency-1.78.6-source\\.build\\installer-verification\\28280dae65c54ec7aa44e53808a7c7a7\\Application\\Assemblies\\VncSharpCore.dll",
+            "SHA256": "C39AA8E4271F47BAF0517EA3DE64BC340599777933FBE99A3EA69A91F470C474",
+            "DebuggableFlags": 263,
+            "DisableOptimizations": true
+          }
+        ]
+      },
+      "ExactProfileResults": [
+        {
+          "Profile": "lan",
+          "PassedMetrics": 0,
+          "RequiredMetrics": 6,
+          "RunPath": "C:\\Project2026\\MDRemoteNG\\.build\\condor-1.78.6\\packaged-performance\\candidate-4k-lan.json",
+          "RunSHA256": "F085F78DA6BC3DD969DBD5F0E69D0205D332C0A4D4E1DAD76E167DBBEE4FA917",
+          "VerdictPath": "C:\\Project2026\\MDRemoteNG\\.build\\condor-1.78.6\\packaged-performance\\verdict-4k-lan.json",
+          "VerdictSHA256": "E181BC1C77616C6D45BA04FF4702BE58879A76B504C0BD0B8B2D8EED5F5DAAB3",
+          "Comparison": {
+            "Baseline": "shipped-1.78.5",
+            "Current": "packaged-1.78.6-helper-server-main-viewer",
+            "Profile": "lan",
+            "RequiredReduction": 0.7,
+            "ProductionSettings": true,
+            "FullAcceptanceWorkload": true,
+            "AllSixMetricsPassed": false,
+            "ProductionAcceptancePassed": false,
+            "HarnessSha256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58",
+            "Verdicts": [
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p50",
+                "BaselineMs": 119.5941,
+                "CurrentMs": 63.0865,
+                "Reduction": 0.4724948806002972,
+                "Passed": false
+              },
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p95",
+                "BaselineMs": 182.0866,
+                "CurrentMs": 156.4955,
+                "Reduction": 0.1405435655342019,
+                "Passed": false
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p50",
+                "BaselineMs": 440.4184,
+                "CurrentMs": 155.0029,
+                "Reduction": 0.6480553491861376,
+                "Passed": false
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p95",
+                "BaselineMs": 605.2918,
+                "CurrentMs": 196.9556,
+                "Reduction": 0.6746104936495092,
+                "Passed": false
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p50",
+                "BaselineMs": 624.0999020000002,
+                "CurrentMs": 212.73215135135138,
+                "Reduction": 0.6591376626248031,
+                "Passed": false
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p95",
+                "BaselineMs": 823.3045487499995,
+                "CurrentMs": 280.9450676470588,
+                "Reduction": 0.6587592427691431,
+                "Passed": false
+              }
+            ],
+            "Boundary": "Precomputed frame presentation START (before lock/copy) through actual control OnPaint using a preallocated Graphics and production dirty-region clip. Continuous gate integrates exact linear visible-age segments split at each paint boundary. Delivered-frame age, skipped IDs and frame intervals remain separately reported."
+          },
+          "Complete": true,
+          "Environment": {
+            "Framework": ".NET 10.0.1",
+            "OS": "Microsoft Windows 10.0.26200",
+            "Processors": "24",
+            "Machine": "GYRFALCON",
+            "ServerGC": "False"
+          },
+          "LibraryMaxUpdateRate": 1000,
+          "PolicyTargetCaptureRate": 60,
+          "InputCount": 0,
+          "RuntimeHashes": {
+            "VncSharpCore": "C39AA8E4271F47BAF0517EA3DE64BC340599777933FBE99A3EA69A91F470C474",
+            "MDRemoteNG.Desktop": "3E82D30517B0439D1CEB1E2E02C217EAA3D21A9FBD5C816BD61D049A295B62B3",
+            "MDRemoteNG.Core": "BE0964B9958917FDBC046EF389F3F306ABE1230F0DA1776492FC25FEB8D438C8",
+            "RemoteViewing": "9AB47750B041F8FB416B23878366E31CFB1DF64B5516E6FA56F8CBFED6A94941"
+          },
+          "Summaries": [
+            {
+              "Scenario": "idle-patch",
+              "Samples": 30,
+              "PresentationToPaintP50Ms": 63.0865,
+              "PresentationToPaintP95Ms": 156.4955,
+              "PresentationToPaintMaxMs": 173.5493,
+              "PresentationP50Ms": 0.0369,
+              "DecodeReadyP50Ms": 63.0048,
+              "PaintP50Ms": 0.0649,
+              "DisplayIntervalP50Ms": 379.14,
+              "DisplayIntervalP95Ms": 489.0087
+            },
+            {
+              "Scenario": "full-frame",
+              "Samples": 20,
+              "PresentationToPaintP50Ms": 155.0029,
+              "PresentationToPaintP95Ms": 196.9556,
+              "PresentationToPaintMaxMs": 243.3204,
+              "PresentationP50Ms": 7.2519,
+              "DecodeReadyP50Ms": 139.7879,
+              "PaintP50Ms": 16.1078,
+              "DisplayIntervalP50Ms": 272.4818,
+              "DisplayIntervalP95Ms": 331.213
+            },
+            {
+              "Scenario": "continuous",
+              "Samples": 76,
+              "PresentationToPaintP50Ms": 146.1505,
+              "PresentationToPaintP95Ms": 176.6207,
+              "PresentationToPaintMaxMs": 238.7164,
+              "PresentationP50Ms": 4.7997,
+              "DecodeReadyP50Ms": 127.8398,
+              "PaintP50Ms": 16.3738,
+              "DisplayIntervalP50Ms": 129.8677,
+              "DisplayIntervalP95Ms": 158.333
+            }
+          ]
+        },
+        {
+          "Profile": "loopback",
+          "PassedMetrics": 1,
+          "RequiredMetrics": 6,
+          "RunPath": "C:\\Project2026\\MDRemoteNG\\.build\\condor-1.78.6\\packaged-performance\\candidate-4k-loopback.json",
+          "RunSHA256": "ADCBA0018227653CF6BE245CF34C4E9D2C5CDABDD455843DC0564EA999307476",
+          "VerdictPath": "C:\\Project2026\\MDRemoteNG\\.build\\condor-1.78.6\\packaged-performance\\verdict-4k-loopback.json",
+          "VerdictSHA256": "91C6B3F4EE453CE28030198DB1C02969ECA4CED3535001262BA76FACF7E9CE0A",
+          "Comparison": {
+            "Baseline": "shipped-1.78.5",
+            "Current": "packaged-1.78.6-helper-server-main-viewer",
+            "Profile": "loopback",
+            "RequiredReduction": 0.7,
+            "ProductionSettings": true,
+            "FullAcceptanceWorkload": true,
+            "AllSixMetricsPassed": false,
+            "ProductionAcceptancePassed": false,
+            "HarnessSha256": "63F3B65713F1D04D5762252DDEB2D2189943C0B7F46E49C84DBB534F89FBDD58",
+            "Verdicts": [
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p50",
+                "BaselineMs": 103.2922,
+                "CurrentMs": 72.8981,
+                "Reduction": 0.2942535835232476,
+                "Passed": false
+              },
+              {
+                "Scenario": "idle-patch",
+                "Quantile": "p95",
+                "BaselineMs": 168.6404,
+                "CurrentMs": 119.0735,
+                "Reduction": 0.2939206738124436,
+                "Passed": false
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p50",
+                "BaselineMs": 446.8549,
+                "CurrentMs": 148.7304,
+                "Reduction": 0.6671617565343918,
+                "Passed": false
+              },
+              {
+                "Scenario": "full-frame",
+                "Quantile": "p95",
+                "BaselineMs": 575.9318,
+                "CurrentMs": 172.0598,
+                "Reduction": 0.7012496965786574,
+                "Passed": true
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p50",
+                "BaselineMs": 600.0536000000001,
+                "CurrentMs": 201.10263888888898,
+                "Reduction": 0.6648588744590667,
+                "Passed": false
+              },
+              {
+                "Scenario": "continuous-time-weighted-visible-age",
+                "Quantile": "p95",
+                "BaselineMs": 812.3558833333327,
+                "CurrentMs": 263.21836381578953,
+                "Reduction": 0.6759814642620325,
+                "Passed": false
+              }
+            ],
+            "Boundary": "Precomputed frame presentation START (before lock/copy) through actual control OnPaint using a preallocated Graphics and production dirty-region clip. Continuous gate integrates exact linear visible-age segments split at each paint boundary. Delivered-frame age, skipped IDs and frame intervals remain separately reported."
+          },
+          "Complete": true,
+          "Environment": {
+            "Framework": ".NET 10.0.1",
+            "OS": "Microsoft Windows 10.0.26200",
+            "Processors": "24",
+            "Machine": "GYRFALCON",
+            "ServerGC": "False"
+          },
+          "LibraryMaxUpdateRate": 1000,
+          "PolicyTargetCaptureRate": 60,
+          "InputCount": 0,
+          "RuntimeHashes": {
+            "VncSharpCore": "C39AA8E4271F47BAF0517EA3DE64BC340599777933FBE99A3EA69A91F470C474",
+            "MDRemoteNG.Desktop": "3E82D30517B0439D1CEB1E2E02C217EAA3D21A9FBD5C816BD61D049A295B62B3",
+            "MDRemoteNG.Core": "BE0964B9958917FDBC046EF389F3F306ABE1230F0DA1776492FC25FEB8D438C8",
+            "RemoteViewing": "9AB47750B041F8FB416B23878366E31CFB1DF64B5516E6FA56F8CBFED6A94941"
+          },
+          "Summaries": [
+            {
+              "Scenario": "idle-patch",
+              "Samples": 30,
+              "PresentationToPaintP50Ms": 72.8981,
+              "PresentationToPaintP95Ms": 119.0735,
+              "PresentationToPaintMaxMs": 126.9585,
+              "PresentationP50Ms": 0.0336,
+              "DecodeReadyP50Ms": 72.8115,
+              "PaintP50Ms": 0.0647,
+              "DisplayIntervalP50Ms": 367.9565,
+              "DisplayIntervalP95Ms": 465.1844
+            },
+            {
+              "Scenario": "full-frame",
+              "Samples": 20,
+              "PresentationToPaintP50Ms": 148.7304,
+              "PresentationToPaintP95Ms": 172.0598,
+              "PresentationToPaintMaxMs": 173.2731,
+              "PresentationP50Ms": 8.9252,
+              "DecodeReadyP50Ms": 131.1445,
+              "PaintP50Ms": 16.2304,
+              "DisplayIntervalP50Ms": 262.214,
+              "DisplayIntervalP95Ms": 320.0801
+            },
+            {
+              "Scenario": "continuous",
+              "Samples": 83,
+              "PresentationToPaintP50Ms": 139.2714,
+              "PresentationToPaintP95Ms": 164.6361,
+              "PresentationToPaintMaxMs": 233.3045,
+              "PresentationP50Ms": 4.7845,
+              "DecodeReadyP50Ms": 122.9462,
+              "PaintP50Ms": 16.7259,
+              "DisplayIntervalP50Ms": 119.3644,
+              "DisplayIntervalP95Ms": 140.8845
+            }
+          ]
+        }
+      ],
+      "EvidenceArtifact": ".build/condor-1.78.6/PACKAGED-PERFORMANCE.json",
+      "EvidenceSHA256": "2A69D8CFD4F4452CC6FF129B2C921D6EBB878C72B196B7774504CC93295391EC",
+      "RuntimeManifestArtifact": ".build/condor-1.78.6/packaged-performance/RUNTIME-MANIFEST.json",
+      "RuntimeManifestSHA256": "30CB52506873BC3322062BD0FBBF4F06A43CE7D3EA8CC97A56F861B17AF8D293"
+    },
+    "RequiredNextStep": "Validate the newly optimized MSI as a separate artifact with a new SHA256 using the same frozen harness and fixed baselines; retain the old misses. Verify the actual CONDOR host after installation before marking the live 70% goal complete."
+  },
   "RejectedPrototype": {
     "Variant": "V3 event-driven library scheduler",
     "Reason": "Rejected as a whole release variant because it misses the primary 4K loopback patch p95 target. No V3 metrics replace V2 metrics.",
