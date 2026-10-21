@@ -158,8 +158,28 @@ identical. Both fixed primary profiles now pass all six gates:
 Seventy-five focused host checks and 102 viewer checks in default and strict
 compression modes pass for this candidate. Five added cache checks include
 reconstruction of 200 seeded updates across cropped and resized displays.
-The follow-up requires a new 1.78.7 installer, exact-payload verification and
-the real CONDOR measurement before the goal can be considered achieved.
+The 1.78.7 installer has now been built and measured using its actual helper
+and precompiled viewer under its bundled runtime. Both profiles pass all six
+fixed gates, with every earlier result retained:
+
+| Profile | Metric | Actual 1.78.7 p50 / p95 | Reduction |
+| --- | --- | ---: | ---: |
+| Loopback | Idle patch | 19.25 / 43.62 ms | 81.37% / 74.13% |
+| Loopback | Full frame | 111.88 / 157.06 ms | 74.96% / 72.73% |
+| Loopback | Visible-frame age | 148.68 / 198.16 ms | 75.22% / 75.61% |
+| Simulated LAN | Idle patch | 21.05 / 41.34 ms | 82.40% / 77.30% |
+| Simulated LAN | Full frame | 116.51 / 151.55 ms | 73.55% / 74.96% |
+| Simulated LAN | Visible-frame age | 160.40 / 222.34 ms | 74.30% / 72.99% |
+
+MSI SHA-256:
+`9AEA1F741A7112D5F88476A465828E5B9FBC4BF2C52F60C6AA2FB4E012BEA041`.
+All 872 extracted files match the publish output. The exact helper passes
+88 host checks (75 focused checks plus 13 existing feature checks), and both
+desktop/helper codec variants pass 102 checks in default and strict modes.
+Eight startup, 18 connection-file and 13 MSI metadata checks also pass.
+The real CONDOR measurement and interactive confirmation remain required;
+the goal is not yet complete. Other network/workload profiles have not been
+remeasured for 1.78.7, so their earlier misses cannot be reported as resolved.
 
 The intended source passes 75 helper/TLS/cache checks and 102 actual viewer,
 codec and pixel-transfer checks, with the latter repeated under strict zlib
